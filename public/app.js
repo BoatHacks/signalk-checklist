@@ -360,4 +360,6 @@ function App () {
     onOpen=${openList} onEdit=${editList} onCreate=${createList} />`
 }
 
-render(html`<${App} />`, document.getElementById('app'))
+const appContainer = document.getElementById('app')
+appContainer.textContent = ''
+render(html`<${App} />`, appContainer)
