@@ -13,6 +13,10 @@
   ],
   "author": "Tobias Rosenstock",
   "license": "MIT",
+  "signalk": {
+    "displayName": "Checklist",
+    "appIcon": "./assets/icons/icon-512.png"
+  },
   "files": [
     "index.js",
     "lib/",
