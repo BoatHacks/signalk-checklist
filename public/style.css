@@ -1,0 +1,203 @@
+:root {
+  --bg: #0f1720;
+  --panel: #1a2531;
+  --panel-alt: #212e3d;
+  --text: #e7edf3;
+  --muted: #8ea0b3;
+  --accent: #2fa8d5;
+  --accent-dim: #1d6f8e;
+  --danger: #d5573b;
+  --ok: #3fae6e;
+  --border: #2c3947;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px 12px 80px;
+}
+
+header.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 4px 16px;
+}
+
+header.bar h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+button:active { transform: scale(0.98); }
+
+button.primary { background: var(--accent); color: #06222c; font-weight: 600; }
+button.danger { background: var(--danger); color: #2a0d05; }
+button.ghost { background: transparent; border: 1px solid var(--border); }
+button.small { padding: 6px 10px; font-size: 0.85rem; }
+button:disabled { opacity: 0.4; cursor: default; }
+
+.list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 10px;
+}
+
+.list-card .meta { display: flex; flex-direction: column; gap: 4px; }
+.list-card .name { font-size: 1.05rem; font-weight: 600; }
+.list-card .progress { color: var(--muted); font-size: 0.9rem; }
+
+.progress-pill {
+  background: var(--panel-alt);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.section-header {
+  margin: 18px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+}
+
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.item-row .checkbox {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  border: 2px solid var(--accent);
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.item-row.checked .checkbox {
+  background: var(--accent);
+}
+
+.item-row.checked .label {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.item-row .label { flex: 1; font-size: 1.02rem; }
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 14px 0;
+}
+
+.edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.edit-row input[type="text"] {
+  flex: 1;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 1rem;
+}
+
+.edit-row .tag {
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.field label { color: var(--muted); font-size: 0.85rem; }
+
+.field input[type="text"] {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 1rem;
+}
+
+.empty {
+  color: var(--muted);
+  text-align: center;
+  padding: 40px 10px;
+}
+
+.banner {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.banner.error { border-color: var(--danger); color: #f3b3a4; }
+.banner.ok { border-color: var(--ok); color: #b9e6c9; }
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 6px;
+  background: var(--muted);
+}
+.sync-dot.connected { background: var(--ok); }
+.sync-dot.disconnected { background: var(--danger); }

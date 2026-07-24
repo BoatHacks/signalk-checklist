@@ -1,0 +1,31 @@
+{
+  "name": "signalk-checklist",
+  "version": "0.1.0",
+  "description": "SignalK plugin + webapp for generic, user-defined checklists",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-utility"
+  ],
+  "author": "Tobias Rosenstock",
+  "license": "MIT",
+  "files": [
+    "index.js",
+    "lib/",
+    "public/"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BoatHacks/signalk-checklist.git"
+  }
+}
