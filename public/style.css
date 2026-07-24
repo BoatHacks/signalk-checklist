@@ -116,7 +116,6 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .item-row.checked .label {
   color: var(--muted);
-  text-decoration: line-through;
 }
 
 .item-row .label { flex: 1; font-size: 1.02rem; }
