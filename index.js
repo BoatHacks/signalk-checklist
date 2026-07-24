@@ -36,9 +36,14 @@ module.exports = function (app) {
     const dataDir = app.getDataDirPath ? app.getDataDirPath() : './data'
     store = new ChecklistStore(dataDir)
 
-    store.init().catch((err) => {
-      app.error(`signalk-checklist: failed to initialize storage: ${err.message}`)
-    })
+    store.init()
+      .then(() => store.needsSeeding())
+      .then((needsSeeding) => {
+        if (needsSeeding) return store.seedExampleChecklist()
+      })
+      .catch((err) => {
+        app.error(`signalk-checklist: failed to initialize storage: ${err.message}`)
+      })
   }
 
   // The server creates a router mounted at /plugins/<plugin.id> and hands it

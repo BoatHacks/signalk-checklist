@@ -126,3 +126,31 @@ test('rejects path-traversal-style list ids', async () => {
   await store.init()
   await assert.rejects(() => store.get('../../etc/passwd'))
 })
+
+test('needsSeeding() is true until the example checklist has been seeded once', async () => {
+  const store = tempStore()
+  await store.init()
+  assert.equal(await store.needsSeeding(), true)
+  await store.seedExampleChecklist()
+  assert.equal(await store.needsSeeding(), false)
+})
+
+test('needsSeeding() stays false even if the seeded example list is later deleted', async () => {
+  const store = tempStore()
+  await store.init()
+  const seeded = await store.seedExampleChecklist()
+  await store.remove(seeded.id)
+  assert.equal(await store.needsSeeding(), false)
+})
+
+test('seedExampleChecklist() writes a readable example list', async () => {
+  const store = tempStore()
+  await store.init()
+  const seeded = await store.seedExampleChecklist()
+  assert.equal(seeded.id, 'familiarizing-yourself-with-the-checklist-plugin')
+  const fromDisk = await store.get(seeded.id)
+  assert.equal(fromDisk.name, 'Familiarizing yourself with the checklist plugin')
+  assert.ok(fromDisk.items.length > 0)
+  assert.ok(fromDisk.items.some((i) => i.type === 'section'))
+  assert.ok(fromDisk.items.every((i) => i.type !== 'item' || i.checked === false))
+})
