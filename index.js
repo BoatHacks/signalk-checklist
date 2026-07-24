@@ -22,23 +22,28 @@ module.exports = function (app) {
   }
 
   let store
+  let currentOptions = {}
 
-  function broadcast (list, options) {
+  function broadcast (list) {
     app.handleMessage(plugin.id, buildStateDelta(plugin.id, list))
-    if (options && options.publishSummary) {
+    if (currentOptions && currentOptions.publishSummary) {
       app.handleMessage(plugin.id, buildSummaryDeltas(plugin.id, list))
     }
   }
 
   plugin.start = function (options) {
+    currentOptions = options || {}
     const dataDir = app.getDataDirPath ? app.getDataDirPath() : './data'
     store = new ChecklistStore(dataDir)
 
     store.init().catch((err) => {
       app.error(`signalk-checklist: failed to initialize storage: ${err.message}`)
     })
+  }
 
-    const router = express.Router()
+  // The server creates a router mounted at /plugins/<plugin.id> and hands it
+  // to us here — we add routes onto it directly, we don't create our own.
+  plugin.registerWithRouter = function (router) {
     router.use(express.json({ limit: '2mb' }))
 
     const asyncHandler = (fn) => (req, res) => {
@@ -69,7 +74,7 @@ module.exports = function (app) {
         name: req.body && req.body.name,
         items: req.body && req.body.items
       })
-      broadcast(list, options)
+      broadcast(list)
       res.json(list)
     }))
 
@@ -80,14 +85,14 @@ module.exports = function (app) {
 
     router.post('/lists/:id/reset', asyncHandler(async (req, res) => {
       const list = await store.reset(req.params.id)
-      broadcast(list, options)
+      broadcast(list)
       res.json(list)
     }))
 
     router.post('/lists/:id/items/:itemId/check', asyncHandler(async (req, res) => {
       const checked = Boolean(req.body && req.body.checked)
       const list = await store.setItemChecked(req.params.id, req.params.itemId, checked)
-      broadcast(list, options)
+      broadcast(list)
       res.json(list)
     }))
 
@@ -100,11 +105,9 @@ module.exports = function (app) {
 
     router.post('/lists/import', asyncHandler(async (req, res) => {
       const list = await store.importList(req.body)
-      broadcast(list, options)
+      broadcast(list)
       res.status(201).json(list)
     }))
-
-    app.registerWithRouter(router)
   }
 
   plugin.stop = function () {
