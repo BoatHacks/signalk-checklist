@@ -16,13 +16,6 @@ left out of v1 to keep the first release simple and shippable.
   in-browser speech recognition), so deferred until a specific list (e.g.
   an engine-room checklist) makes the case for it.
 
-- **Locking/conflict protection for structure edits.** Editing a list's
-  structure is currently last-write-wins with no locking, since it's a
-  boat-crew checklist app, not a shared doc editor. If concurrent editing
-  turns out to actually cause real conflicts in practice, revisit with
-  either a simple "someone else is editing this list" indicator or a
-  lightweight lock.
-
 ## Shipped since v1
 
 - **Per-item notes/values.** ~~Items are checkbox-only today~~ — done: any
