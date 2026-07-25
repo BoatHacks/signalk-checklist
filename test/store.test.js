@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { ChecklistStore } = require('../lib/store')
+const { ChecklistStore, isComplete } = require('../lib/store')
 
 function tempStore () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-'))
@@ -141,6 +141,75 @@ test('needsSeeding() stays false even if the seeded example list is later delete
   const seeded = await store.seedExampleChecklist()
   await store.remove(seeded.id)
   assert.equal(await store.needsSeeding(), false)
+})
+
+test('saveStructure() normalizes valueType and coerces value to match it', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Engine Checks' })
+  const updated = await store.saveStructure(list.id, {
+    name: 'Engine Checks',
+    items: [
+      { type: 'item', label: 'Fuel level', valueType: 'number', value: '42.5' },
+      { type: 'item', label: 'Notes', valueType: 'text', value: 123 },
+      { type: 'item', label: 'Plain checkbox' }
+    ]
+  })
+  assert.equal(updated.items[0].valueType, 'number')
+  assert.equal(updated.items[0].value, 42.5)
+  assert.equal(updated.items[1].valueType, 'text')
+  assert.equal(updated.items[1].value, '123')
+  assert.equal(updated.items[2].valueType, null)
+  assert.equal(updated.items[2].value, null)
+})
+
+test('setItemValue() updates a value field and rejects items without one', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const withItem = await store.saveStructure(list.id, {
+    name: 'Departure',
+    items: [
+      { type: 'item', label: 'Fuel', valueType: 'number' },
+      { type: 'item', label: 'Plain' }
+    ]
+  })
+  const [fuelItem, plainItem] = withItem.items
+  const updated = await store.setItemValue(list.id, fuelItem.id, '88')
+  assert.equal(updated.items[0].value, 88)
+  await assert.rejects(() => store.setItemValue(list.id, plainItem.id, 'x'))
+})
+
+test('reset() clears recorded values as well as checked state', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Winter Layup' })
+  const withItem = await store.saveStructure(list.id, {
+    name: 'Winter Layup',
+    items: [{ type: 'item', label: 'Coolant note', valueType: 'text', checked: true, value: 'topped up' }]
+  })
+  const reset = await store.reset(withItem.id)
+  assert.equal(reset.items[0].checked, false)
+  assert.equal(reset.items[0].value, null)
+})
+
+test('isComplete() is true only when every checkbox item is checked and there is at least one', async () => {
+  const store = tempStore()
+  await store.init()
+  const empty = await store.create({ name: 'Empty' })
+  assert.equal(isComplete(empty), false)
+
+  const list = await store.create({ name: 'Two Items' })
+  const structured = await store.saveStructure(list.id, {
+    name: 'Two Items',
+    items: [
+      { type: 'item', label: 'A', checked: true },
+      { type: 'item', label: 'B', checked: false }
+    ]
+  })
+  assert.equal(isComplete(structured), false)
+  const bothChecked = await store.setItemChecked(list.id, structured.items[1].id, true)
+  assert.equal(isComplete(bothChecked), true)
 })
 
 test('seedExampleChecklist() writes a readable example list', async () => {

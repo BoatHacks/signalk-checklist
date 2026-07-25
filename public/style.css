@@ -99,6 +99,15 @@ button:disabled { opacity: 0.4; cursor: default; }
   border-bottom: 1px solid var(--border);
 }
 
+.item-row .item-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
 .item-row .checkbox {
   width: 26px;
   height: 26px;
@@ -118,7 +127,37 @@ button:disabled { opacity: 0.4; cursor: default; }
   color: var(--muted);
 }
 
-.item-row .label { flex: 1; font-size: 1.02rem; }
+.item-row .label {
+  flex: 1;
+  font-size: 1.02rem;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+
+.value-input {
+  flex: none;
+  width: 84px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+}
+
+.value-input.text {
+  width: 140px;
+}
+
+.value-type-select {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  flex: none;
+}
 
 .toolbar {
   display: flex;

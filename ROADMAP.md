@@ -16,17 +16,21 @@ left out of v1 to keep the first release simple and shippable.
   in-browser speech recognition), so deferred until a specific list (e.g.
   an engine-room checklist) makes the case for it.
 
-- **Per-item notes/values.** Items are checkbox-only today (label +
-  checked). A natural next step is an optional value field per item —
-  e.g. a free-text note or a numeric reading (fuel level, engine hours) —
-  without forcing every checklist into that shape.
-
 - **Locking/conflict protection for structure edits.** Editing a list's
   structure is currently last-write-wins with no locking, since it's a
   boat-crew checklist app, not a shared doc editor. If concurrent editing
   turns out to actually cause real conflicts in practice, revisit with
   either a simple "someone else is editing this list" indicator or a
   lightweight lock.
+
+## Shipped since v1
+
+- **Per-item notes/values.** ~~Items are checkbox-only today~~ — done: any
+  item can now optionally carry a free-text or numeric value field, chosen
+  per item in edit mode.
+- **Completed-run record-keeping.** Markdown export (manual, and for
+  historical runs) plus an append-only per-list run history, auto-archived
+  whenever a list is fully checked off.
 
 ## Other ideas
 

@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Per-item notes/values: any item can optionally carry a value field (chosen
+  per item in edit mode — free text or a number), recorded while running the
+  list (e.g. a fuel reading or a quick note), separate from its checked
+  state.
+- Markdown export, both for the live state of a list (manual "Export
+  Markdown" button) and for a specific historical run.
+- Run history: a completed run (every item checked) is automatically
+  archived as an append-only snapshot per list — visible from a new
+  "History" view with per-run Markdown export. Archiving triggers only on
+  the incomplete-to-complete transition, so re-checking an already-complete
+  list doesn't create duplicate archive entries. Resetting a list clears
+  checked state and any recorded values, ready for the next run.
+
 ## [0.1.0] - 2026-07-24
 
 ### Added

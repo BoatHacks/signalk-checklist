@@ -1,6 +1,8 @@
 const express = require('express')
-const { ChecklistStore } = require('./lib/store')
+const { ChecklistStore, isComplete } = require('./lib/store')
+const { RunHistoryStore } = require('./lib/run-history')
 const { buildStateDelta, buildSummaryDeltas } = require('./lib/delta')
+const { renderChecklistMarkdown } = require('./lib/markdown')
 
 module.exports = function (app) {
   const plugin = {}
@@ -22,6 +24,7 @@ module.exports = function (app) {
   }
 
   let store
+  let runHistory
   let currentOptions = {}
 
   function broadcast (list) {
@@ -31,10 +34,19 @@ module.exports = function (app) {
     }
   }
 
+  // If a run-state change (check/value) just pushed the list from incomplete
+  // to fully complete, archive a snapshot into that list's run history.
+  async function maybeArchive (wasComplete, list) {
+    if (!wasComplete && isComplete(list)) {
+      await runHistory.archiveRun(list)
+    }
+  }
+
   plugin.start = function (options) {
     currentOptions = options || {}
     const dataDir = app.getDataDirPath ? app.getDataDirPath() : './data'
     store = new ChecklistStore(dataDir)
+    runHistory = new RunHistoryStore(dataDir)
 
     store.init()
       .then(() => store.needsSeeding())
@@ -73,7 +85,8 @@ module.exports = function (app) {
       res.json(list)
     }))
 
-    // Replace list structure (name/items). Last-write-wins, no locking.
+    // Replace list structure (name/items, including each item's optional
+    // valueType). Last-write-wins, no locking.
     router.put('/lists/:id', asyncHandler(async (req, res) => {
       const list = await store.saveStructure(req.params.id, {
         name: req.body && req.body.name,
@@ -95,8 +108,24 @@ module.exports = function (app) {
     }))
 
     router.post('/lists/:id/items/:itemId/check', asyncHandler(async (req, res) => {
+      const before = await store.get(req.params.id)
+      if (!before) return res.status(404).json({ error: 'not found' })
+      const wasComplete = isComplete(before)
       const checked = Boolean(req.body && req.body.checked)
       const list = await store.setItemChecked(req.params.id, req.params.itemId, checked)
+      await maybeArchive(wasComplete, list)
+      broadcast(list)
+      res.json(list)
+    }))
+
+    // Record a per-item value (free-text note or number) while running a
+    // list. Only valid for items whose structure defines a valueType.
+    router.post('/lists/:id/items/:itemId/value', asyncHandler(async (req, res) => {
+      const before = await store.get(req.params.id)
+      if (!before) return res.status(404).json({ error: 'not found' })
+      const wasComplete = isComplete(before)
+      const list = await store.setItemValue(req.params.id, req.params.itemId, req.body && req.body.value)
+      await maybeArchive(wasComplete, list)
       broadcast(list)
       res.json(list)
     }))
@@ -108,15 +137,49 @@ module.exports = function (app) {
       res.json(list)
     }))
 
+    // Manual Markdown export of the list's current (live) state.
+    router.get('/lists/:id/export/markdown', asyncHandler(async (req, res) => {
+      const list = await store.get(req.params.id)
+      if (!list) return res.status(404).json({ error: 'not found' })
+      const markdown = renderChecklistMarkdown(list, { timestampLabel: 'Exported', timestamp: new Date().toISOString() })
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${list.id}.md"`)
+      res.send(markdown)
+    }))
+
     router.post('/lists/import', asyncHandler(async (req, res) => {
       const list = await store.importList(req.body)
       broadcast(list)
       res.status(201).json(list)
     }))
+
+    // Run history: completed snapshots, auto-archived whenever a list hits 100%.
+    router.get('/lists/:id/runs', asyncHandler(async (req, res) => {
+      res.json(await runHistory.listRuns(req.params.id))
+    }))
+
+    router.get('/lists/:id/runs/:runId', asyncHandler(async (req, res) => {
+      const run = await runHistory.getRun(req.params.id, req.params.runId)
+      if (!run) return res.status(404).json({ error: 'not found' })
+      res.json(run)
+    }))
+
+    router.get('/lists/:id/runs/:runId/export/markdown', asyncHandler(async (req, res) => {
+      const run = await runHistory.getRun(req.params.id, req.params.runId)
+      if (!run) return res.status(404).json({ error: 'not found' })
+      const markdown = renderChecklistMarkdown(
+        { name: run.listName, items: run.items },
+        { timestampLabel: 'Completed', timestamp: run.completedAt }
+      )
+      res.setHeader('Content-Type', 'text/markdown; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${run.listId}-${run.id}.md"`)
+      res.send(markdown)
+    }))
   }
 
   plugin.stop = function () {
     store = undefined
+    runHistory = undefined
   }
 
   return plugin
