@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.0] - 2026-07-25
 
 ### Added
 
@@ -23,7 +23,7 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   means keep forever). Old runs are pruned automatically — right after a
   new run is archived, whenever a list's history is viewed, and on plugin
   startup — so retention takes effect without a background scheduler.
-- Light/dark theme, matching [[signalk-dead-mans-switch]]'s convention: a
+- Light/dark theme, matching signalk-dead-mans-switch's convention: a
   manual toggle (remembered per browser, falling back to the OS's
   prefers-color-scheme), plus an optional "Automatically switch theme"
   plugin setting that instead follows the boat's sun position
