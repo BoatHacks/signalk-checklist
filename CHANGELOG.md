@@ -23,6 +23,12 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   means keep forever). Old runs are pruned automatically — right after a
   new run is archived, whenever a list's history is viewed, and on plugin
   startup — so retention takes effect without a background scheduler.
+- Light/dark theme, matching [[signalk-dead-mans-switch]]'s convention: a
+  manual toggle (remembered per browser, falling back to the OS's
+  prefers-color-scheme), plus an optional "Automatically switch theme"
+  plugin setting that instead follows the boat's sun position
+  (`vessels.self.environment.sun`, falling back to `environment.mode`) —
+  the manual toggle is hidden while that's on, same as dead-mans-switch.
 
 ## [0.1.0] - 2026-07-24
 

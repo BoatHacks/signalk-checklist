@@ -3,6 +3,7 @@ const { ChecklistStore, isComplete } = require('./lib/store')
 const { RunHistoryStore } = require('./lib/run-history')
 const { buildStateDelta, buildSummaryDeltas } = require('./lib/delta')
 const { renderChecklistMarkdown } = require('./lib/markdown')
+const { computeThemeRecommendation } = require('./lib/theme')
 
 module.exports = function (app) {
   const plugin = {}
@@ -18,6 +19,12 @@ module.exports = function (app) {
         type: 'boolean',
         title: 'Publish checklist summary (checked/total counts, complete flag) to the wider SignalK data tree',
         description: 'Internal live-sync between webapp clients always happens regardless of this setting.',
+        default: false
+      },
+      autoTheme: {
+        type: 'boolean',
+        title: 'Automatically switch light/dark theme based on sun position',
+        description: 'Webapp follows vessels.self.environment.sun (preferred — dawn/sunrise/day/sunset/dusk/night) or vessels.self.environment.mode (simpler day/night fallback) instead of the manual light/dark toggle. Needs a plugin like signalk-derived-data publishing one of those paths.',
         default: false
       }
     }
@@ -185,6 +192,20 @@ module.exports = function (app) {
       res.setHeader('Content-Disposition', `attachment; filename="${run.listId}-${run.id}.md"`)
       res.send(markdown)
     }))
+
+    // Sun-position-based theme recommendation for the webapp's optional
+    // "Automatically switch theme" setting. Read fresh on every call rather
+    // than pushed via delta — the webapp only polls this every ~60s, so a
+    // separate push mechanism would add complexity without adding
+    // responsiveness that matters for something as slow-changing as sun
+    // position.
+    router.get('/theme', (req, res) => {
+      res.set('Cache-Control', 'no-store')
+      res.json({
+        autoTheme: Boolean(currentOptions.autoTheme),
+        recommendation: computeThemeRecommendation(app, currentOptions)
+      })
+    })
   }
 
   plugin.stop = function () {

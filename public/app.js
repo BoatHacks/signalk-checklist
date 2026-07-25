@@ -1,9 +1,10 @@
-import { h, render } from './vendor/preact.mjs'
+import { h, render, Fragment } from './vendor/preact.mjs'
 import { useState, useEffect, useCallback, useRef } from './vendor/hooks.mjs'
 import htm from './vendor/htm.mjs'
 
 const html = htm.bind(h)
 const API = '/plugins/signalk-checklist'
+const THEME_STORAGE_KEY = 'signalk-checklist-theme'
 
 async function apiCall (method, path, body) {
   const res = await fetch(API + path, {
@@ -104,6 +105,50 @@ function SyncIndicator ({ connected }) {
       <span class=${`sync-dot ${connected ? 'connected' : 'disconnected'}`}></span>
       ${connected ? 'Live' : 'Reconnecting…'}
     </span>
+  `
+}
+
+// --- Theme -------------------------------------------------------------
+//
+// Same convention as signalk-dead-mans-switch: manual light/dark toggle,
+// remembered in localStorage, falling back to the OS's prefers-color-scheme
+// when nothing's been chosen yet. The plugin's optional "Automatically
+// switch theme" setting (autoTheme) additionally follows the boat's sun
+// position (vessels.self.environment.sun, falling back to
+// environment.mode) via GET /theme — when that's on, the manual toggle is
+// hidden, matching dead-mans-switch's behavior exactly.
+function getPreferredTheme () {
+  let stored = null
+  try {
+    stored = window.localStorage.getItem(THEME_STORAGE_KEY)
+  } catch (err) {
+    // localStorage can throw in some restricted/embedded browsers — fall
+    // through to the OS preference in that case.
+  }
+  if (stored === 'light' || stored === 'dark') return stored
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+  return prefersDark ? 'dark' : 'light'
+}
+
+function SunIcon () {
+  return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="4.5" />
+    <path d="M12 2v2.5M12 19.5V22M4.2 4.2l1.8 1.8M18 18l1.8 1.8M2 12h2.5M19.5 12H22M4.2 19.8l1.8-1.8M18 6l1.8-1.8" />
+  </svg>`
+}
+function MoonIcon () {
+  return html`<svg viewBox="0 0 24 24" fill="currentColor">
+    <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z" />
+  </svg>`
+}
+
+function ThemeToggle ({ theme, setTheme }) {
+  const label = theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'
+  return html`
+    <button type="button" class="icon-btn theme-toggle" title=${label} aria-label=${label}
+      onClick=${() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+      ${theme === 'dark' ? html`<${SunIcon} />` : html`<${MoonIcon} />`}
+    </button>
   `
 }
 
@@ -331,6 +376,43 @@ function App () {
   const [current, setCurrent] = useState(null)
   const [runs, setRuns] = useState([])
   const [banner, setBanner] = useState(null)
+  const [theme, setTheme] = useState(getPreferredTheme())
+  const [themeConfig, setThemeConfig] = useState({ autoTheme: false, recommendation: null })
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme)
+    } catch (err) {
+      // Theme just won't persist across reloads on this browser.
+    }
+  }, [theme])
+
+  // Poll the plugin's sun-based recommendation. Sun position changes slowly,
+  // so this doesn't need to be frequent — just often enough to catch dusk/
+  // dawn transitions in reasonable time.
+  useEffect(() => {
+    let cancelled = false
+    async function poll () {
+      try {
+        const cfg = await apiCall('GET', '/theme')
+        if (!cancelled) setThemeConfig(cfg)
+      } catch (err) {
+        // No recommendation this cycle — leave the current theme as-is.
+      }
+    }
+    poll()
+    const interval = setInterval(poll, 60000)
+    return () => { cancelled = true; clearInterval(interval) }
+  }, [])
+
+  useEffect(() => {
+    if (!themeConfig.autoTheme) return
+    const { recommendation } = themeConfig
+    if ((recommendation === 'light' || recommendation === 'dark') && recommendation !== theme) {
+      setTheme(recommendation)
+    }
+  }, [themeConfig, theme])
 
   const flash = (type, text) => {
     setBanner({ type, text })
@@ -490,23 +572,34 @@ function App () {
     }
   }
 
+  let content
   if (view === 'run' && current) {
-    return html`<${Runner} list=${current} connected=${connected}
+    content = html`<${Runner} list=${current} connected=${connected}
       onToggle=${toggleItem} onSetValue=${setItemValue} onReset=${resetList}
       onEdit=${() => setView('edit')} onHistory=${openHistory}
       onExportMarkdown=${exportListMarkdown} onBack=${backToOverview} />`
-  }
-  if (view === 'history' && current) {
-    return html`<${History} list=${current} runs=${runs}
+  } else if (view === 'history' && current) {
+    content = html`<${History} list=${current} runs=${runs}
       onExportRunMarkdown=${exportRunMarkdown} onBack=${() => setView('run')} />`
-  }
-  if (view === 'edit' && current) {
-    return html`<${Editor} list=${current} banner=${banner}
+  } else if (view === 'edit' && current) {
+    content = html`<${Editor} list=${current} banner=${banner}
       onSave=${saveStructure} onDelete=${deleteList}
       onExport=${exportList} onImport=${importFile} onBack=${backToOverview} />`
+  } else {
+    content = html`<${Overview} lists=${lists} connected=${connected} banner=${banner}
+      onOpen=${openList} onEdit=${editList} onCreate=${createList} />`
   }
-  return html`<${Overview} lists=${lists} connected=${connected} banner=${banner}
-    onOpen=${openList} onEdit=${editList} onCreate=${createList} />`
+
+  return html`
+    <${Fragment}>
+      ${!themeConfig.autoTheme && html`
+        <div class="theme-toolbar">
+          <${ThemeToggle} theme=${theme} setTheme=${setTheme} />
+        </div>
+      `}
+      ${content}
+    <//>
+  `
 }
 
 const appContainer = document.getElementById('app')

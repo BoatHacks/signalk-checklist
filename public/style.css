@@ -1,4 +1,27 @@
+/* ---------- theme variables (light default, dark override) ----------
+   Same convention as signalk-dead-mans-switch: light mode is the plain
+   default (:root), dark mode is applied via [data-theme="dark"] set on
+   <html> by app.js. Every other rule in this file references these
+   variables rather than hardcoding colors, so both themes fall out of
+   this one block. */
 :root {
+  --bg: #f5f4f1;
+  --panel: #ffffff;
+  --panel-alt: #f0efe9;
+  --text: #1c2024;
+  --muted: #6b7280;
+  --accent: #1f7fa1;
+  --accent-dim: #175a72;
+  --danger: #c0392b;
+  --ok: #2f8f57;
+  --border: #e0ded7;
+  --on-accent-text: #ffffff;
+  --on-danger-text: #ffffff;
+  --banner-ok-text: #1f6b3f;
+  --banner-error-text: #a03424;
+}
+
+[data-theme="dark"] {
   --bg: #0f1720;
   --panel: #1a2531;
   --panel-alt: #212e3d;
@@ -9,6 +32,10 @@
   --danger: #d5573b;
   --ok: #3fae6e;
   --border: #2c3947;
+  --on-accent-text: #06222c;
+  --on-danger-text: #2a0d05;
+  --banner-ok-text: #b9e6c9;
+  --banner-error-text: #f3b3a4;
 }
 
 * { box-sizing: border-box; }
@@ -19,6 +46,7 @@ body {
   background: var(--bg);
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
 #app {
@@ -52,11 +80,30 @@ button {
 
 button:active { transform: scale(0.98); }
 
-button.primary { background: var(--accent); color: #06222c; font-weight: 600; }
-button.danger { background: var(--danger); color: #2a0d05; }
+button.primary { background: var(--accent); color: var(--on-accent-text); font-weight: 600; }
+button.danger { background: var(--danger); color: var(--on-danger-text); }
 button.ghost { background: transparent; border: 1px solid var(--border); }
 button.small { padding: 6px 10px; font-size: 0.85rem; }
 button:disabled { opacity: 0.4; cursor: default; }
+
+.icon-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.icon-btn svg { width: 18px; height: 18px; }
+
+.theme-toolbar {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 10;
+}
 
 .list-card {
   display: flex;
@@ -201,7 +248,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 .field label { color: var(--muted); font-size: 0.85rem; }
 
-.field input[type="text"] {
+.field input[type="text"],
+.field input[type="number"] {
   background: var(--panel-alt);
   border: 1px solid var(--border);
   color: var(--text);
@@ -226,8 +274,8 @@ button:disabled { opacity: 0.4; cursor: default; }
   color: var(--muted);
 }
 
-.banner.error { border-color: var(--danger); color: #f3b3a4; }
-.banner.ok { border-color: var(--ok); color: #b9e6c9; }
+.banner.error { border-color: var(--danger); color: var(--banner-error-text); }
+.banner.ok { border-color: var(--ok); color: var(--banner-ok-text); }
 
 .sync-dot {
   width: 8px;
