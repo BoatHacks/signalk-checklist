@@ -60,3 +60,36 @@ test('getRun()/_dirFor() reject path-traversal-style ids', async () => {
   await assert.rejects(() => history.getRun('../../etc', 'x'))
   await assert.rejects(() => history.getRun('pre-departure', '../../etc/passwd'))
 })
+
+test('pruneExpiredRuns() is a no-op when retentionDays is null/0/undefined', async () => {
+  const history = tempRunHistory()
+  await history.archiveRun(sampleList)
+  await history.pruneExpiredRuns('pre-departure', null)
+  await history.pruneExpiredRuns('pre-departure', 0)
+  await history.pruneExpiredRuns('pre-departure', undefined)
+  assert.equal((await history.listRuns('pre-departure')).length, 1)
+})
+
+test('pruneExpiredRuns() deletes only runs older than the retention window', async () => {
+  const history = tempRunHistory()
+  const dir = history._dirFor('pre-departure')
+  const fresh = await history.archiveRun(sampleList)
+  const old = await history.archiveRun(sampleList)
+
+  // Backdate the "old" run's completedAt and rewrite it directly on disk,
+  // simulating a run archived well outside a short retention window.
+  const oldRun = await history.getRun('pre-departure', old.id)
+  oldRun.completedAt = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString()
+  fs.writeFileSync(path.join(dir, `${old.id}.json`), JSON.stringify(oldRun))
+
+  await history.pruneExpiredRuns('pre-departure', 5)
+
+  const remaining = await history.listRuns('pre-departure')
+  assert.equal(remaining.length, 1)
+  assert.equal(remaining[0].id, fresh.id)
+})
+
+test('pruneExpiredRuns() on a list with no run history yet does not throw', async () => {
+  const history = tempRunHistory()
+  await history.pruneExpiredRuns('never-run', 7)
+})

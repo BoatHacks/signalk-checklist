@@ -19,6 +19,10 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   the incomplete-to-complete transition, so re-checking an already-complete
   list doesn't create duplicate archive entries. Resetting a list clears
   checked state and any recorded values, ready for the next run.
+- Per-list retention for completed runs (set in edit mode, in days; blank
+  means keep forever). Old runs are pruned automatically — right after a
+  new run is archived, whenever a list's history is viewed, and on plugin
+  startup — so retention takes effect without a background scheduler.
 
 ## [0.1.0] - 2026-07-24
 

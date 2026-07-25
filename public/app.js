@@ -227,6 +227,9 @@ function History ({ list, runs, onExportRunMarkdown, onBack }) {
     </header>
     <h1 style="margin:0 0 4px">${list.name}</h1>
     <div class="section-header" style="margin-top:0">Completed runs</div>
+    ${list.retentionDays
+      ? html`<div class="banner">Runs older than ${list.retentionDays} day${list.retentionDays === 1 ? '' : 's'} are removed automatically.</div>`
+      : html`<div class="banner">Runs are kept forever (set a retention limit in Edit list).</div>`}
     ${runs.length === 0 && html`<div class="empty">No completed runs yet — finish every item to archive one.</div>`}
     ${runs.map((run) => html`
       <div class="list-card" key=${run.id}>
@@ -242,6 +245,7 @@ function History ({ list, runs, onExportRunMarkdown, onBack }) {
 
 function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner }) {
   const [name, setName] = useState(list.name)
+  const [retentionDays, setRetentionDays] = useState(list.retentionDays == null ? '' : String(list.retentionDays))
   const [items, setItems] = useState(list.items.map((i) => ({ ...i })))
   const fileInputRef = useRef(null)
 
@@ -277,6 +281,12 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
       <input type="text" value=${name} onInput=${(e) => setName(e.target.value)} />
     </div>
 
+    <div class="field">
+      <label>Keep completed runs for (days)</label>
+      <input type="number" min="1" placeholder="Forever" value=${retentionDays}
+        onInput=${(e) => setRetentionDays(e.target.value)} />
+    </div>
+
     ${items.map((item, idx) => html`
       <div class="edit-row" key=${item.id}>
         <span class="tag">${item.type === 'section' ? 'SECTION' : 'item'}</span>
@@ -302,7 +312,7 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     </div>
 
     <div class="toolbar">
-      <button class="primary" onClick=${() => onSave({ name, items })}>Save</button>
+      <button class="primary" onClick=${() => onSave({ name, items, retentionDays: retentionDays === '' ? null : Number(retentionDays) })}>Save</button>
       <button class="danger" onClick=${onDelete}>Delete checklist</button>
     </div>
 
@@ -426,9 +436,9 @@ function App () {
     }
   }
 
-  const saveStructure = async ({ name, items }) => {
+  const saveStructure = async ({ name, items, retentionDays }) => {
     try {
-      await apiCall('PUT', `/lists/${current.id}`, { name, items })
+      await apiCall('PUT', `/lists/${current.id}`, { name, items, retentionDays })
       flash('ok', 'Saved')
       backToOverview()
     } catch (err) {

@@ -35,10 +35,12 @@ module.exports = function (app) {
   }
 
   // If a run-state change (check/value) just pushed the list from incomplete
-  // to fully complete, archive a snapshot into that list's run history.
+  // to fully complete, archive a snapshot into that list's run history, then
+  // sweep out anything past that list's configured retention window.
   async function maybeArchive (wasComplete, list) {
     if (!wasComplete && isComplete(list)) {
       await runHistory.archiveRun(list)
+      await runHistory.pruneExpiredRuns(list.id, list.retentionDays)
     }
   }
 
@@ -53,6 +55,11 @@ module.exports = function (app) {
       .then((needsSeeding) => {
         if (needsSeeding) return store.seedExampleChecklist()
       })
+      .then(() => store.listAll())
+      .then((lists) => Promise.all(lists.map(async (summary) => {
+        const list = await store.get(summary.id)
+        if (list) await runHistory.pruneExpiredRuns(list.id, list.retentionDays)
+      })))
       .catch((err) => {
         app.error(`signalk-checklist: failed to initialize storage: ${err.message}`)
       })
@@ -86,11 +93,12 @@ module.exports = function (app) {
     }))
 
     // Replace list structure (name/items, including each item's optional
-    // valueType). Last-write-wins, no locking.
+    // valueType, and the list's run-history retention window). Last-write-wins, no locking.
     router.put('/lists/:id', asyncHandler(async (req, res) => {
       const list = await store.saveStructure(req.params.id, {
         name: req.body && req.body.name,
-        items: req.body && req.body.items
+        items: req.body && req.body.items,
+        retentionDays: req.body && req.body.retentionDays
       })
       broadcast(list)
       res.json(list)
@@ -155,6 +163,8 @@ module.exports = function (app) {
 
     // Run history: completed snapshots, auto-archived whenever a list hits 100%.
     router.get('/lists/:id/runs', asyncHandler(async (req, res) => {
+      const list = await store.get(req.params.id)
+      if (list) await runHistory.pruneExpiredRuns(list.id, list.retentionDays)
       res.json(await runHistory.listRuns(req.params.id))
     }))
 

@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { ChecklistStore, isComplete } = require('../lib/store')
+const { ChecklistStore, isComplete, normalizeRetentionDays } = require('../lib/store')
 
 function tempStore () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-'))
@@ -210,6 +210,40 @@ test('isComplete() is true only when every checkbox item is checked and there is
   assert.equal(isComplete(structured), false)
   const bothChecked = await store.setItemChecked(list.id, structured.items[1].id, true)
   assert.equal(isComplete(bothChecked), true)
+})
+
+test('normalizeRetentionDays() treats null/0/empty/negative as "keep forever"', () => {
+  assert.equal(normalizeRetentionDays(null), null)
+  assert.equal(normalizeRetentionDays(undefined), null)
+  assert.equal(normalizeRetentionDays(''), null)
+  assert.equal(normalizeRetentionDays(0), null)
+  assert.equal(normalizeRetentionDays(-5), null)
+  assert.equal(normalizeRetentionDays('not a number'), null)
+  assert.equal(normalizeRetentionDays('30'), 30)
+  assert.equal(normalizeRetentionDays(14.9), 14)
+})
+
+test('create() defaults retentionDays to null (keep forever)', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  assert.equal(list.retentionDays, null)
+})
+
+test('saveStructure() sets retentionDays and preserves it when omitted from a later save', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const withRetention = await store.saveStructure(list.id, { name: 'Departure', items: [], retentionDays: 30 })
+  assert.equal(withRetention.retentionDays, 30)
+
+  // A later save that doesn't mention retentionDays keeps the existing value.
+  const untouched = await store.saveStructure(list.id, { name: 'Departure', items: [] })
+  assert.equal(untouched.retentionDays, 30)
+
+  // Explicitly passing null clears it back to "keep forever".
+  const cleared = await store.saveStructure(list.id, { name: 'Departure', items: [], retentionDays: null })
+  assert.equal(cleared.retentionDays, null)
 })
 
 test('seedExampleChecklist() writes a readable example list', async () => {
