@@ -1,6 +1,6 @@
 {
   "name": "signalk-checklist",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SignalK plugin + webapp for generic, user-defined checklists",
   "main": "index.js",
   "scripts": {
