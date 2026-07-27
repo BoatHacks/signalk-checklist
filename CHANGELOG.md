@@ -7,6 +7,28 @@ follows [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- SignalK authentication support, for boats running with SignalK security
+  enabled:
+  - The webapp now handles a 401 by showing a sign-in screen (posting to
+    SignalK's own `/signalk/v1/auth/login`) instead of a confusing error
+    banner, and signs both REST calls and the live-sync WebSocket with the
+    resulting session — via the cookie SignalK sets automatically, and,
+    belt-and-suspenders, an explicit bearer token for browsers (some MFD/
+    chartplotter browsers) that restrict cookies more than Web Storage.
+    A sign-out button is available once signed in.
+  - The plugin's own REST routes additionally check
+    `req.skIsAuthenticated`/`req.skPrincipal` directly (rejecting
+    unauthenticated requests, and read-only principals' writes) as
+    defense-in-depth — signalk-server already gates all of `/plugins/*`
+    behind full admin auth on its own once security is enabled, but this
+    doesn't rely on that staying true.
+  - Item actions that fire a REST call *against this same SignalK
+    server's own API* (URLs under `/signalk/v1/`) now automatically
+    authenticate themselves via SignalK's standard device access request
+    flow — requesting access once, persisting the resulting token after a
+    human approves it in Security → Access Requests, and reusing it from
+    then on. Never attaches this token to unrelated third-party URLs.
+
 - Per-item actions: any item can optionally be wired to a trigger button
   (to the right of its checkbox/value) that fires a REST call (PUT or
   POST, with an optional body) or publishes a SignalK delta

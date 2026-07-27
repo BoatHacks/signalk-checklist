@@ -5,6 +5,7 @@ const { buildStateDelta, buildSummaryDeltas } = require('./lib/delta')
 const { renderChecklistMarkdown } = require('./lib/markdown')
 const { computeThemeRecommendation } = require('./lib/theme')
 const { triggerAction } = require('./lib/actions')
+const { requireAuth } = require('./lib/auth')
 
 module.exports = function (app) {
   const plugin = {}
@@ -34,6 +35,7 @@ module.exports = function (app) {
   let store
   let runHistory
   let currentOptions = {}
+  let dataDir
 
   function broadcast (list) {
     app.handleMessage(plugin.id, buildStateDelta(plugin.id, list))
@@ -54,7 +56,7 @@ module.exports = function (app) {
 
   plugin.start = function (options) {
     currentOptions = options || {}
-    const dataDir = app.getDataDirPath ? app.getDataDirPath() : './data'
+    dataDir = app.getDataDirPath ? app.getDataDirPath() : './data'
     store = new ChecklistStore(dataDir)
     runHistory = new RunHistoryStore(dataDir)
 
@@ -76,6 +78,7 @@ module.exports = function (app) {
   // The server creates a router mounted at /plugins/<plugin.id> and hands it
   // to us here — we add routes onto it directly, we don't create our own.
   plugin.registerWithRouter = function (router) {
+    router.use(requireAuth)
     router.use(express.json({ limit: '2mb' }))
 
     const asyncHandler = (fn) => (req, res) => {
@@ -158,7 +161,7 @@ module.exports = function (app) {
       if (!list) return res.status(404).json({ error: 'not found' })
       const item = list.items.find((i) => i.id === req.params.itemId)
       if (!item || item.type !== 'item') return res.status(404).json({ error: 'item not found' })
-      const result = await triggerAction(item.action, { app, pluginId: plugin.id })
+      const result = await triggerAction(item.action, { app, pluginId: plugin.id, dataDir })
       res.json(result)
     }))
 
@@ -228,6 +231,7 @@ module.exports = function (app) {
   plugin.stop = function () {
     store = undefined
     runHistory = undefined
+    dataDir = undefined
   }
 
   return plugin

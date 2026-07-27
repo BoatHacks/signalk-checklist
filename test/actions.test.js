@@ -1,6 +1,9 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { triggerAction } = require('../lib/actions')
+const fs = require('fs')
+const os = require('os')
+const path = require('path')
+const { triggerAction, isSignalKApiUrl } = require('../lib/actions')
 
 function fakeApp () {
   const messages = []
@@ -76,4 +79,37 @@ test('rest action propagates a fetch/network failure as a rejection', async () =
     () => triggerAction({ type: 'rest', method: 'PUT', url: 'http://x', body: null }, { fetchImpl }),
     /ECONNREFUSED/
   )
+})
+
+test('attaches a SignalK bearer token when the URL targets the server\'s own /signalk/v1/ API and one is available', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-actions-'))
+  fs.writeFileSync(path.join(dir, 'signalk-auth.json'), JSON.stringify({ clientId: 'abc', token: 'my-token' }))
+  const app = { securityStrategy: { isDummy: () => false }, config: { settings: { port: 3000 } } }
+  let capturedInit
+  const fetchImpl = async (url, init) => { capturedInit = init; return { ok: true, status: 200, statusText: 'OK' } }
+  await triggerAction(
+    { type: 'rest', method: 'PUT', url: 'http://192.168.1.5:3000/signalk/v1/api/vessels/self/electrical/switches/anchorLight/state', body: 'true' },
+    { app, dataDir: dir, fetchImpl }
+  )
+  assert.equal(capturedInit.headers.Authorization, 'Bearer my-token')
+})
+
+test('does not attach a token to a URL outside /signalk/v1/, even with a stored token available', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-actions-'))
+  fs.writeFileSync(path.join(dir, 'signalk-auth.json'), JSON.stringify({ clientId: 'abc', token: 'my-token' }))
+  const app = { securityStrategy: { isDummy: () => false }, config: { settings: { port: 3000 } } }
+  let capturedInit
+  const fetchImpl = async (url, init) => { capturedInit = init; return { ok: true, status: 200, statusText: 'OK' } }
+  await triggerAction(
+    { type: 'rest', method: 'PUT', url: 'http://192.168.1.50/api/relay', body: null },
+    { app, dataDir: dir, fetchImpl }
+  )
+  assert.equal(capturedInit.headers.Authorization, undefined)
+})
+
+test('isSignalKApiUrl() matches any host as long as the path is under /signalk/v1/', () => {
+  assert.equal(isSignalKApiUrl('http://192.168.1.5:3000/signalk/v1/api/vessels/self'), true)
+  assert.equal(isSignalKApiUrl('http://localhost:3000/signalk/v1/api/vessels/self'), true)
+  assert.equal(isSignalKApiUrl('http://192.168.1.50/api/relay'), false)
+  assert.equal(isSignalKApiUrl('not a url'), false)
 })

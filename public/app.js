@@ -5,16 +5,76 @@ import htm from './vendor/htm.mjs'
 const html = htm.bind(h)
 const API = '/plugins/signalk-checklist'
 const THEME_STORAGE_KEY = 'signalk-checklist-theme'
+const AUTH_TOKEN_KEY = 'signalk-checklist-auth-token'
+
+// Thrown by apiCall on a 401, so callers can tell "you're not logged in" apart
+// from an ordinary error and show the login gate instead of a banner.
+class AuthRequiredError extends Error {}
+
+// --- SignalK authentication --------------------------------------------
+//
+// Primary mechanism: SignalK's documented cookie-based shared session —
+// logging in via /signalk/v1/auth/login sets an HttpOnly session cookie,
+// and both fetch (with credentials: 'include') and the WebSocket handshake
+// send it automatically. That alone is enough on a normal browser.
+//
+// Belt-and-braces: some MFD/chartplotter browsers restrict cookies more
+// aggressively than they restrict Web Storage. The login response also
+// hands back the raw JWT, so we additionally stash it in sessionStorage and
+// attach it explicitly — as an Authorization header for REST calls, and as
+// a ?token= query param for the WebSocket (browsers can't set custom
+// headers on a WS handshake). SignalK's own auth middleware already checks
+// both sources, so sending both is redundant, never conflicting.
+function getStoredToken () {
+  try {
+    return window.sessionStorage.getItem(AUTH_TOKEN_KEY)
+  } catch (err) {
+    return null
+  }
+}
+function storeToken (token) {
+  try {
+    if (token) window.sessionStorage.setItem(AUTH_TOKEN_KEY, token)
+    else window.sessionStorage.removeItem(AUTH_TOKEN_KEY)
+  } catch (err) {
+    // Web Storage unavailable — cookie-based auth still covers us.
+  }
+}
+
+async function signalKLogin (username, password, rememberMe) {
+  const res = await fetch('/signalk/v1/auth/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, rememberMe })
+  })
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(payload.message || payload.error || 'Login failed')
+  if (payload.token) storeToken(payload.token)
+  return payload
+}
+
+async function signalKLogout () {
+  await fetch('/signalk/v1/auth/logout', { method: 'PUT', credentials: 'include' }).catch(() => {})
+  storeToken(null)
+}
 
 async function apiCall (method, path, body) {
+  const headers = {}
+  if (body) headers['Content-Type'] = 'application/json'
+  const token = getStoredToken()
+  if (token) headers.Authorization = `Bearer ${token}`
   const res = await fetch(API + path, {
     method,
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    credentials: 'include',
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined
   })
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}))
-    throw new Error(payload.error || `request failed (${res.status})`)
+    const message = payload.error || `request failed (${res.status})`
+    if (res.status === 401) throw new AuthRequiredError(message)
+    throw new Error(message)
   }
   if (res.status === 204) return null
   return res.json()
@@ -75,7 +135,9 @@ function useSignalKSync (onListState) {
 
     function connect () {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      ws = new WebSocket(`${proto}://${location.host}/signalk/v1/stream?subscribe=none`)
+      const token = getStoredToken()
+      const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
+      ws = new WebSocket(`${proto}://${location.host}/signalk/v1/stream?subscribe=none${tokenParam}`)
 
       ws.addEventListener('open', () => {
         setConnected(true)
@@ -172,6 +234,63 @@ function ThemeToggle ({ theme, setTheme }) {
       onClick=${() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
       ${theme === 'dark' ? html`<${SunIcon} />` : html`<${MoonIcon} />`}
     </button>
+  `
+}
+
+function LogoutIcon () {
+  return html`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h9" />
+    <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" />
+  </svg>`
+}
+
+// Shown instead of the normal app whenever an API call comes back 401 —
+// SignalK security is enabled and this browser doesn't have (or has lost)
+// a valid session. See the AuthRequiredError / signalKLogin block above.
+function LoginGate ({ onLoggedIn }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [rememberMe, setRememberMe] = useState(true)
+  const [error, setError] = useState(null)
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!username || !password) return
+    setBusy(true)
+    setError(null)
+    try {
+      await signalKLogin(username, password, rememberMe)
+      onLoggedIn()
+    } catch (err) {
+      setError(err.message)
+      setBusy(false)
+    }
+  }
+
+  return html`
+    <div class="login-gate">
+      <form class="login-card" onSubmit=${submit}>
+        <h1 style="margin:0 0 4px">Sign in</h1>
+        <p class="banner" style="margin-bottom:16px">This SignalK server requires you to sign in before using Checklists.</p>
+        ${error && html`<div class="banner error">${error}</div>`}
+        <div class="field">
+          <label>Username</label>
+          <input type="text" autocomplete="username" value=${username} onInput=${(e) => setUsername(e.target.value)} />
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" autocomplete="current-password" value=${password} onInput=${(e) => setPassword(e.target.value)} />
+        </div>
+        <label class="checkbox-field">
+          <input type="checkbox" checked=${rememberMe} onChange=${(e) => setRememberMe(e.target.checked)} />
+          Remember me on this device
+        </label>
+        <button type="submit" class="primary" disabled=${busy} style="width:100%;margin-top:8px">
+          ${busy ? 'Signing in…' : 'Sign in'}
+        </button>
+      </form>
+    </div>
   `
 }
 
@@ -480,6 +599,7 @@ function App () {
   const [banner, setBanner] = useState(null)
   const [theme, setTheme] = useState(getPreferredTheme())
   const [themeConfig, setThemeConfig] = useState({ autoTheme: false, recommendation: null })
+  const [authRequired, setAuthRequired] = useState(false)
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -500,7 +620,9 @@ function App () {
         const cfg = await apiCall('GET', '/theme')
         if (!cancelled) setThemeConfig(cfg)
       } catch (err) {
-        // No recommendation this cycle — leave the current theme as-is.
+        // No recommendation this cycle (including "not logged in yet") —
+        // leave the current theme as-is; the normal login gate below
+        // handles the auth side of things.
       }
     }
     poll()
@@ -521,11 +643,22 @@ function App () {
     setTimeout(() => setBanner((b) => (b && b.text === text ? null : b)), 4000)
   }
 
+  // Central place for handling a failed API call: a 401 means this browser
+  // isn't (or is no longer) authenticated, so show the login gate instead
+  // of just flashing an error banner the person can't do anything about.
+  const handleErr = (err, message) => {
+    if (err instanceof AuthRequiredError) {
+      setAuthRequired(true)
+    } else {
+      flash('error', message || err.message)
+    }
+  }
+
   const refreshSummaries = useCallback(async () => {
     try {
       setLists(await apiCall('GET', '/lists'))
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }, [])
 
@@ -549,7 +682,7 @@ function App () {
       setCurrent(await apiCall('GET', `/lists/${id}`))
       setView('run')
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -558,7 +691,7 @@ function App () {
       setCurrent(await apiCall('GET', `/lists/${id}`))
       setView('edit')
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -572,7 +705,7 @@ function App () {
       setCurrent(list)
       setView('edit')
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -593,7 +726,7 @@ function App () {
       setCurrent(updated)
       announceIfJustCompleted(wasComplete, updated)
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -608,23 +741,30 @@ function App () {
       setCurrent(updated)
       announceIfJustCompleted(wasComplete, updated)
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
   const triggerItem = async (itemId) => {
-    const result = await apiCall('POST', `/lists/${current.id}/items/${itemId}/trigger`)
-    if (!result.ok) {
-      throw new Error(result.type === 'rest' ? `Remote returned ${result.status} ${result.statusText}` : 'Action failed')
+    try {
+      const result = await apiCall('POST', `/lists/${current.id}/items/${itemId}/trigger`)
+      if (!result.ok) {
+        throw new Error(result.type === 'rest' ? `Remote returned ${result.status} ${result.statusText}` : 'Action failed')
+      }
+      return result
+    } catch (err) {
+      // Rethrown so the trigger button itself still shows its own local
+      // error state, but a 401 also surfaces the shared login gate.
+      if (err instanceof AuthRequiredError) setAuthRequired(true)
+      throw err
     }
-    return result
   }
 
   const resetList = async () => {
     try {
       setCurrent(await apiCall('POST', `/lists/${current.id}/reset`))
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -634,7 +774,7 @@ function App () {
       flash('ok', 'Saved')
       backToOverview()
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -644,7 +784,7 @@ function App () {
       await apiCall('DELETE', `/lists/${current.id}`)
       backToOverview()
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -665,7 +805,7 @@ function App () {
       setRuns(await apiCall('GET', `/lists/${current.id}/runs`))
       setView('history')
     } catch (err) {
-      flash('error', err.message)
+      handleErr(err)
     }
   }
 
@@ -678,8 +818,12 @@ function App () {
       await refreshSummaries()
       flash('ok', `Imported "${doc.name}"`)
     } catch (err) {
-      flash('error', `Import failed: ${err.message}`)
+      handleErr(err, `Import failed: ${err.message}`)
     }
+  }
+
+  if (authRequired) {
+    return html`<${LoginGate} onLoggedIn=${() => location.reload()} />`
   }
 
   let content
@@ -702,11 +846,13 @@ function App () {
 
   return html`
     <${Fragment}>
-      ${!themeConfig.autoTheme && html`
-        <div class="theme-toolbar">
-          <${ThemeToggle} theme=${theme} setTheme=${setTheme} />
-        </div>
-      `}
+      <div class="theme-toolbar">
+        ${!themeConfig.autoTheme && html`<${ThemeToggle} theme=${theme} setTheme=${setTheme} />`}
+        <button type="button" class="icon-btn" title="Sign out" aria-label="Sign out"
+          onClick=${() => signalKLogout().then(() => location.reload())}>
+          <${LogoutIcon} />
+        </button>
+      </div>
       ${content}
     <//>
   `

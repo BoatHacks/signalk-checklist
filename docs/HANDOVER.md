@@ -140,6 +140,21 @@ re-derivable from the code):
   state/value — clicking it never checks the item off. `lib/actions.js`
   takes an injectable `fetchImpl` specifically so this is unit-testable
   without a real network call.
+- **Two distinct authentication concerns, solved two different ways.**
+  (1) The webapp *as a client of this plugin's own API* — handled by a
+  browser-side sign-in screen against SignalK's standard
+  `/signalk/v1/auth/login`, matching cookie + explicit-bearer-token
+  belt-and-suspenders approach (see `public/app.js` and the Gotchas
+  section below for why signalk-server's own global gate makes the
+  plugin's own `requireAuth` check technically redundant but still worth
+  keeping). (2) An item's REST action calling back into *this same
+  server's own* `/signalk/v1/` API — handled entirely differently, via
+  `lib/signalk-auth.js`'s device access request flow (no browser
+  involved at all; the plugin backend requests its own access, a human
+  approves it once in Security → Access Requests, and the resulting
+  token is persisted and reused). Don't conflate these two — they solve
+  different problems for different actors (a human in a browser vs. the
+  plugin acting as its own automated client).
 
 ## API surface (mounted at `/plugins/signalk-checklist`)
 
@@ -161,6 +176,12 @@ GET    /lists/:id/runs/:runId
 GET    /lists/:id/runs/:runId/export/markdown
 GET    /theme                              -> { autoTheme, recommendation }
 ```
+
+All of the above require an authenticated admin-level session whenever the
+SignalK server has security enabled (enforced by the server itself, not
+optional per-plugin — see Gotcha #7 below). With no security configured
+(the common case for Tobi's boat), nothing changes; every route behaves
+exactly as it did before this feature existed.
 
 Webapp static files are served separately at `/signalk-checklist/`
 (derived from the package name / `signalk.displayName`), per SignalK's
@@ -217,6 +238,41 @@ before touching `index.js` or `public/app.js`.
    grant — needs `gh auth refresh -h github.com -s workflow` (same
    device-flow dance again) before that push will succeed.
 
+7. **signalk-server already gates all of `/plugins/*` behind full admin
+   auth on its own**, whenever a real security strategy is configured —
+   confirmed by reading the actual installed server's source
+   (`dist/serverroutes.js`: `app.use('/plugins', adminAuthenticationMiddleware(false))`,
+   registered during `startSecurity()` in the `Server` constructor, well
+   before any plugin is loaded — so it always runs first for any request
+   under `/plugins/signalk-checklist/*`). This means `lib/auth.js`'s own
+   `requireAuth` check is **not** the primary thing standing between an
+   unauthenticated request and this plugin's data when security is
+   on — it's kept anyway as defense-in-depth and for the readonly/write
+   distinction at finer granularity than the server's all-or-nothing
+   admin gate. Don't assume a plugin has to implement its own protection
+   from scratch to be secure; check what the server already does first.
+
+8. **Testing token security locally needs a real `security.json` on
+   disk, not just the `ADMINUSER` env var.** `ADMINUSER=user:pass` is
+   enough to log in, but at least one server route (approving a device
+   access request) calls `getSecurityConfig(app, forceRead=true)`, which
+   reads `security.json` fresh from disk rather than the in-memory config
+   the `ADMINUSER` bootstrap built — and a missing file there means a
+   missing `secretKey`, which crashes with `secretOrPrivateKey must have
+   a value` when it tries to sign an approval token. Fix: write a real
+   `security.json` by hand (bcrypt-hash a password with the `bcryptjs`
+   package already in `signalk-server`'s own `node_modules`, generate a
+   `secretKey`, list one admin user) rather than relying on `ADMINUSER`
+   alone for anything beyond a basic login smoke test.
+
+9. **The device-access-request approval endpoint's parameter names are
+   easy to get wrong.** `PUT /skServer/security/access/requests/:identifier/:status`
+   — `:identifier` is the request's `accessIdentifier` field from the
+   pending-requests list (which is actually the *client's* `clientId`,
+   not the `requestId` you might reach for first), and `:status` must be
+   lowercase (`approved`, not `APPROVED`) — the handler does a literal
+   `status === 'approved'` string check.
+
 ## Local development & testing setup
 
 There is no npm-published version and no CI step that runs against a real
@@ -264,6 +320,30 @@ Notes:
   `public/vendor/*.mjs` files works well as a fast headless sanity check
   without needing the full server — see git history around the
   "Loading…" bugfix commit for an example.
+- To test with SignalK security actually enabled, write a real
+  `security.json` into the config dir rather than relying on `ADMINUSER`
+  alone (see Gotcha #8) — e.g.:
+  ```sh
+  node -e "
+  const bcrypt = require('./sk-test-server/node_modules/bcryptjs');
+  const crypto = require('crypto');
+  console.log(JSON.stringify({
+    allow_readonly: false, expiration: '1h',
+    secretKey: crypto.randomBytes(64).toString('hex'),
+    users: [{ username: 'testadmin', type: 'admin',
+      password: bcrypt.hashSync('testpass123', bcrypt.genSaltSync(10)) }],
+    devices: [], acls: [],
+    allowNewUserRegistration: false, allowDeviceAccessRequests: true
+  }, null, 2))" > /path/to/sk-home/security.json
+  ```
+  Also add `"security": { "strategy": "./tokensecurity" }` under a
+  `security` key in `settings.json` (or set `SECURITYSTRATEGY=@signalk/sk-simple-token-security`
+  as an env var instead). Then: `POST /signalk/v1/auth/login` with
+  `{username, password}` to get a token; list pending device access
+  requests with `GET /skServer/security/access/requests` (as an
+  authenticated admin) and approve one with `PUT
+  /skServer/security/access/requests/:clientId/approved` (see Gotcha #9
+  for the parameter footguns there).
 
 ## Release process
 
