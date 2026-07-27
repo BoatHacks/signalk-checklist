@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { ChecklistStore, isComplete, normalizeRetentionDays } = require('../lib/store')
+const { ChecklistStore, isComplete, normalizeRetentionDays, normalizeAction } = require('../lib/store')
 
 function tempStore () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-'))
@@ -244,6 +244,64 @@ test('saveStructure() sets retentionDays and preserves it when omitted from a la
   // Explicitly passing null clears it back to "keep forever".
   const cleared = await store.saveStructure(list.id, { name: 'Departure', items: [], retentionDays: null })
   assert.equal(cleared.retentionDays, null)
+})
+
+test('normalizeAction() accepts a well-formed rest action and defaults method to PUT', () => {
+  assert.deepEqual(
+    normalizeAction({ type: 'rest', url: ' http://192.168.1.50/api/relay ' }),
+    { type: 'rest', method: 'PUT', url: 'http://192.168.1.50/api/relay', body: null }
+  )
+  assert.deepEqual(
+    normalizeAction({ type: 'rest', method: 'POST', url: 'http://x', body: '{"on":true}' }),
+    { type: 'rest', method: 'POST', url: 'http://x', body: '{"on":true}' }
+  )
+})
+
+test('normalizeAction() rejects a rest action with no url', () => {
+  assert.equal(normalizeAction({ type: 'rest', url: '' }), null)
+  assert.equal(normalizeAction({ type: 'rest' }), null)
+})
+
+test('normalizeAction() ignores an unrecognized method and falls back to PUT', () => {
+  assert.equal(normalizeAction({ type: 'rest', method: 'DELETE', url: 'http://x' }).method, 'PUT')
+})
+
+test('normalizeAction() accepts a well-formed delta action, preserving the value\'s JSON type', () => {
+  assert.deepEqual(
+    normalizeAction({ type: 'delta', path: 'electrical.switches.anchorLight.state', value: true }),
+    { type: 'delta', path: 'electrical.switches.anchorLight.state', value: true }
+  )
+  assert.equal(normalizeAction({ type: 'delta', path: 'a.b', value: 42 }).value, 42)
+})
+
+test('normalizeAction() rejects a delta action with a missing or malformed path', () => {
+  assert.equal(normalizeAction({ type: 'delta', path: '', value: 1 }), null)
+  assert.equal(normalizeAction({ type: 'delta', path: 'has spaces', value: 1 }), null)
+  assert.equal(normalizeAction({ type: 'delta', path: '..double.dot', value: 1 }), null)
+})
+
+test('normalizeAction() returns null for anything else (missing/unknown type, non-object)', () => {
+  assert.equal(normalizeAction(null), null)
+  assert.equal(normalizeAction(undefined), null)
+  assert.equal(normalizeAction({}), null)
+  assert.equal(normalizeAction({ type: 'nonsense' }), null)
+})
+
+test('saveStructure() carries a normalized action through on the item, and sections never get one', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Engine Checks' })
+  const updated = await store.saveStructure(list.id, {
+    name: 'Engine Checks',
+    items: [
+      { type: 'section', label: 'Pre-start', action: { type: 'delta', path: 'a.b', value: 1 } },
+      { type: 'item', label: 'Start blower', action: { type: 'delta', path: 'electrical.switches.blower.state', value: true } },
+      { type: 'item', label: 'No action here' }
+    ]
+  })
+  assert.equal(updated.items[0].action, undefined)
+  assert.deepEqual(updated.items[1].action, { type: 'delta', path: 'electrical.switches.blower.state', value: true })
+  assert.equal(updated.items[2].action, null)
 })
 
 test('seedExampleChecklist() writes a readable example list', async () => {

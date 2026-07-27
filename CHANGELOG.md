@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Per-item actions: any item can optionally be wired to a trigger button
+  (to the right of its checkbox/value) that fires a REST call (PUT or
+  POST, with an optional body) or publishes a SignalK delta
+  (path + value), configured per item in edit mode. Runs server-side —
+  REST calls sidestep CORS entirely and work regardless of which device's
+  browser clicked the button; delta publishing has to run server-side
+  regardless, since only the plugin backend can put something onto the
+  SignalK bus. Entirely independent of the item's checked state and
+  value — clicking the trigger button never checks the item off.
+
 ## [0.2.0] - 2026-07-25
 
 ### Added

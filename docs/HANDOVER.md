@@ -69,6 +69,20 @@ Item {
   checked: boolean
   valueType: 'text' | 'number' | null   // chosen per item, in edit mode
   value: string | number | null          // run-state, like `checked`
+  action: null | RestAction | DeltaAction  // optional trigger button, structure-level
+}
+
+RestAction {
+  type: 'rest'
+  method: 'PUT' | 'POST'
+  url: string
+  body: string | null      // sent as-is; Content-Type inferred (JSON if it parses, else text/plain)
+}
+
+DeltaAction {
+  type: 'delta'
+  path: string             // dotted SignalK path, e.g. electrical.switches.anchorLight.state
+  value: any                // JSON-typed value to publish
 }
 
 Run (in runs/<listId>/<runId>.json) {
@@ -118,6 +132,14 @@ re-derivable from the code):
   `vessels.self.environment.sun` (preferred) or `environment.mode`
   (fallback), polled via `GET /theme` every 60s (slow-changing, unlike
   dead-mans-switch's 1s status poll).
+- **Per-item actions (REST call or SignalK delta) always run server-side**,
+  never from the browser — this sidesteps CORS entirely for REST calls to
+  boat-local devices (many don't send CORS headers) and is the only option
+  for delta publishing anyway (only the plugin backend can call
+  `app.handleMessage`). The trigger button is fully decoupled from checked
+  state/value — clicking it never checks the item off. `lib/actions.js`
+  takes an injectable `fetchImpl` specifically so this is unit-testable
+  without a real network call.
 
 ## API surface (mounted at `/plugins/signalk-checklist`)
 
@@ -130,6 +152,7 @@ DELETE /lists/:id
 POST   /lists/:id/reset
 POST   /lists/:id/items/:itemId/check      { checked }
 POST   /lists/:id/items/:itemId/value      { value }
+POST   /lists/:id/items/:itemId/trigger    (fires the item's configured action, if any)
 GET    /lists/:id/export                   (JSON download)
 GET    /lists/:id/export/markdown
 POST   /lists/import                       (full list document)

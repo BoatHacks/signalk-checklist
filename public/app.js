@@ -31,7 +31,30 @@ function isListComplete (list) {
 }
 
 function newDraftItem (type) {
-  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null }
+  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null, action: null }
+}
+
+/** Best-effort parse for the delta-action value field: keep JSON typing
+ *  (true, 42, "text", {..}) when it parses, otherwise fall back to the raw
+ *  string as typed. */
+function parseActionValue (raw) {
+  if (raw == null || raw === '') return null
+  try {
+    return JSON.parse(raw)
+  } catch (err) {
+    return raw
+  }
+}
+
+/** The editor keeps a delta action's value as the raw string the user
+ *  typed; convert it to a properly-typed JSON value right before saving. */
+function prepareItemsForSave (items) {
+  return items.map((item) => {
+    if (item.action && item.action.type === 'delta') {
+      return { ...item, action: { ...item.action, value: parseActionValue(item.action.value) } }
+    }
+    return item
+  })
 }
 
 // --- Live sync -------------------------------------------------------------
@@ -231,7 +254,40 @@ function ValueInput ({ item, onCommit }) {
   `
 }
 
-function Runner ({ list, connected, onToggle, onSetValue, onReset, onEdit, onHistory, onExportMarkdown, onBack }) {
+// Fires an item's configured action (REST call or SignalK delta) on click,
+// entirely independent of the checkbox/value. Shows a brief inline
+// busy/success/error state on the button itself rather than relying only
+// on the shared banner, since several of these might exist on one screen.
+function TriggerButton ({ onTrigger }) {
+  const [state, setState] = useState('idle') // idle | busy | ok | error
+  const timerRef = useRef(null)
+
+  const handleClick = async (e) => {
+    e.stopPropagation()
+    if (state === 'busy') return
+    setState('busy')
+    try {
+      await onTrigger()
+      setState('ok')
+    } catch (err) {
+      setState('error')
+    }
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => setState('idle'), 2500)
+  }
+
+  const icon = state === 'busy' ? '…' : state === 'ok' ? '✓' : state === 'error' ? '!' : '⚡'
+  const label = state === 'error' ? 'Action failed — tap to retry' : 'Run action'
+
+  return html`
+    <button type="button" class=${`icon-btn trigger-btn ${state}`} title=${label} aria-label=${label}
+      disabled=${state === 'busy'} onClick=${handleClick}>
+      ${icon}
+    </button>
+  `
+}
+
+function Runner ({ list, connected, onToggle, onSetValue, onTrigger, onReset, onEdit, onHistory, onExportMarkdown, onBack }) {
   const { checked, total } = progressOf(list)
   return html`
     <header class="bar">
@@ -250,6 +306,7 @@ function Runner ({ list, connected, onToggle, onSetValue, onReset, onEdit, onHis
               <span class="label">${item.label}</span>
             </div>
             ${item.valueType && html`<${ValueInput} item=${item} onCommit=${(v) => onSetValue(item.id, v)} />`}
+            ${item.action && html`<${TriggerButton} onTrigger=${() => onTrigger(item.id)} />`}
           </div>
         `)}
     </div>
@@ -311,6 +368,22 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     next[idx] = { ...next[idx], valueType: valueType || null, value: null }
     setItems(next)
   }
+  const setActionType = (idx, type) => {
+    const next = items.slice()
+    if (!type) {
+      next[idx] = { ...next[idx], action: null }
+    } else if (type === 'rest') {
+      next[idx] = { ...next[idx], action: { type: 'rest', method: 'PUT', url: '', body: '' } }
+    } else {
+      next[idx] = { ...next[idx], action: { type: 'delta', path: '', value: '' } }
+    }
+    setItems(next)
+  }
+  const updateAction = (idx, patch) => {
+    const next = items.slice()
+    next[idx] = { ...next[idx], action: { ...next[idx].action, ...patch } }
+    setItems(next)
+  }
   const removeAt = (idx) => setItems(items.filter((_, i) => i !== idx))
   const addItem = () => setItems([...items, newDraftItem('item')])
   const addSection = () => setItems([...items, newDraftItem('section')])
@@ -333,22 +406,51 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     </div>
 
     ${items.map((item, idx) => html`
-      <div class="edit-row" key=${item.id}>
-        <span class="tag">${item.type === 'section' ? 'SECTION' : 'item'}</span>
-        <input type="text" placeholder=${item.type === 'section' ? 'Section title' : 'Item label'}
-          value=${item.label} onInput=${(e) => updateLabel(idx, e.target.value)} />
+      <${Fragment} key=${item.id}>
+        <div class="edit-row">
+          <span class="tag">${item.type === 'section' ? 'SECTION' : 'item'}</span>
+          <input type="text" placeholder=${item.type === 'section' ? 'Section title' : 'Item label'}
+            value=${item.label} onInput=${(e) => updateLabel(idx, e.target.value)} />
+          ${item.type === 'item' && html`
+            <select class="value-type-select" value=${item.valueType || ''}
+              onChange=${(e) => updateValueType(idx, e.target.value)}>
+              <option value="">No value</option>
+              <option value="text">Text</option>
+              <option value="number">Number</option>
+            </select>
+          `}
+          <button class="ghost small" onClick=${() => move(idx, -1)} disabled=${idx === 0}>↑</button>
+          <button class="ghost small" onClick=${() => move(idx, 1)} disabled=${idx === items.length - 1}>↓</button>
+          <button class="danger small" onClick=${() => removeAt(idx)}>✕</button>
+        </div>
         ${item.type === 'item' && html`
-          <select class="value-type-select" value=${item.valueType || ''}
-            onChange=${(e) => updateValueType(idx, e.target.value)}>
-            <option value="">No value</option>
-            <option value="text">Text</option>
-            <option value="number">Number</option>
-          </select>
+          <div class="action-config">
+            <select class="value-type-select" value=${item.action ? item.action.type : ''}
+              onChange=${(e) => setActionType(idx, e.target.value)}>
+              <option value="">No action button</option>
+              <option value="rest">REST call</option>
+              <option value="delta">SignalK delta</option>
+            </select>
+            ${item.action && item.action.type === 'rest' && html`
+              <select class="value-type-select" value=${item.action.method || 'PUT'}
+                onChange=${(e) => updateAction(idx, { method: e.target.value })}>
+                <option value="PUT">PUT</option>
+                <option value="POST">POST</option>
+              </select>
+              <input type="text" class="action-input" placeholder="https://192.168.1.50/api/relay"
+                value=${item.action.url || ''} onInput=${(e) => updateAction(idx, { url: e.target.value })} />
+              <input type="text" class="action-input" placeholder="Body (optional, e.g. JSON)"
+                value=${item.action.body || ''} onInput=${(e) => updateAction(idx, { body: e.target.value })} />
+            `}
+            ${item.action && item.action.type === 'delta' && html`
+              <input type="text" class="action-input" placeholder="SignalK path, e.g. electrical.switches.anchorLight.state"
+                value=${item.action.path || ''} onInput=${(e) => updateAction(idx, { path: e.target.value })} />
+              <input type="text" class="action-input" placeholder="Value, e.g. true or 1 or &quot;text&quot;"
+                value=${item.action.value ?? ''} onInput=${(e) => updateAction(idx, { value: e.target.value })} />
+            `}
+          </div>
         `}
-        <button class="ghost small" onClick=${() => move(idx, -1)} disabled=${idx === 0}>↑</button>
-        <button class="ghost small" onClick=${() => move(idx, 1)} disabled=${idx === items.length - 1}>↓</button>
-        <button class="danger small" onClick=${() => removeAt(idx)}>✕</button>
-      </div>
+      <//>
     `)}
 
     <div class="toolbar">
@@ -357,7 +459,7 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     </div>
 
     <div class="toolbar">
-      <button class="primary" onClick=${() => onSave({ name, items, retentionDays: retentionDays === '' ? null : Number(retentionDays) })}>Save</button>
+      <button class="primary" onClick=${() => onSave({ name, items: prepareItemsForSave(items), retentionDays: retentionDays === '' ? null : Number(retentionDays) })}>Save</button>
       <button class="danger" onClick=${onDelete}>Delete checklist</button>
     </div>
 
@@ -510,6 +612,14 @@ function App () {
     }
   }
 
+  const triggerItem = async (itemId) => {
+    const result = await apiCall('POST', `/lists/${current.id}/items/${itemId}/trigger`)
+    if (!result.ok) {
+      throw new Error(result.type === 'rest' ? `Remote returned ${result.status} ${result.statusText}` : 'Action failed')
+    }
+    return result
+  }
+
   const resetList = async () => {
     try {
       setCurrent(await apiCall('POST', `/lists/${current.id}/reset`))
@@ -575,7 +685,7 @@ function App () {
   let content
   if (view === 'run' && current) {
     content = html`<${Runner} list=${current} connected=${connected}
-      onToggle=${toggleItem} onSetValue=${setItemValue} onReset=${resetList}
+      onToggle=${toggleItem} onSetValue=${setItemValue} onTrigger=${triggerItem} onReset=${resetList}
       onEdit=${() => setView('edit')} onHistory=${openHistory}
       onExportMarkdown=${exportListMarkdown} onBack=${backToOverview} />`
   } else if (view === 'history' && current) {

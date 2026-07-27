@@ -4,6 +4,7 @@ const { RunHistoryStore } = require('./lib/run-history')
 const { buildStateDelta, buildSummaryDeltas } = require('./lib/delta')
 const { renderChecklistMarkdown } = require('./lib/markdown')
 const { computeThemeRecommendation } = require('./lib/theme')
+const { triggerAction } = require('./lib/actions')
 
 module.exports = function (app) {
   const plugin = {}
@@ -143,6 +144,22 @@ module.exports = function (app) {
       await maybeArchive(wasComplete, list)
       broadcast(list)
       res.json(list)
+    }))
+
+    // Fire an item's configured action (a REST call or a SignalK delta
+    // publish) — triggered by its own button, entirely independent of the
+    // checkbox/value. Runs server-side: for 'rest' this sidesteps CORS
+    // (many boat-local device APIs don't send CORS headers) and works no
+    // matter which device's browser clicked the button; for 'delta' it has
+    // to run server-side regardless, since only the plugin backend can
+    // publish onto the SignalK bus.
+    router.post('/lists/:id/items/:itemId/trigger', asyncHandler(async (req, res) => {
+      const list = await store.get(req.params.id)
+      if (!list) return res.status(404).json({ error: 'not found' })
+      const item = list.items.find((i) => i.id === req.params.itemId)
+      if (!item || item.type !== 'item') return res.status(404).json({ error: 'item not found' })
+      const result = await triggerAction(item.action, { app, pluginId: plugin.id })
+      res.json(result)
     }))
 
     router.get('/lists/:id/export', asyncHandler(async (req, res) => {
