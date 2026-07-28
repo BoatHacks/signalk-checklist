@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+
+- Live SignalK input for text/number value fields: an item with a value
+  type can optionally be given a SignalK path to read from. While running
+  the list, the value field continuously mirrors that path's live
+  readings (read-only) instead of being manually typed into. The moment
+  the item is checked off, the current live reading is snapshotted as the
+  item's recorded value — not updated continuously — so it becomes a
+  fixed record for that run, available in export/history the same way a
+  manually-entered value always was. Unchecking preserves the last
+  recorded value; a manual list Reset clears it, same as any other value.
+
 ## [0.3.0] - 2026-07-27
 
 ### Added

@@ -234,6 +234,12 @@ button:disabled { opacity: 0.4; cursor: default; }
   flex: none;
 }
 
+.value-input.live {
+  border-color: var(--accent);
+  color: var(--accent);
+  cursor: default;
+}
+
 .trigger-btn.ok { border-color: var(--ok); color: var(--ok); }
 .trigger-btn.error { border-color: var(--danger); color: var(--danger); }
 .trigger-btn.busy { opacity: 0.6; }

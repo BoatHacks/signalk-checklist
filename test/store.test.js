@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('fs')
 const os = require('os')
 const path = require('path')
-const { ChecklistStore, isComplete, normalizeRetentionDays, normalizeAction } = require('../lib/store')
+const { ChecklistStore, isComplete, normalizeRetentionDays, normalizeAction, normalizeInputPath } = require('../lib/store')
 
 function tempStore () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'signalk-checklist-'))
@@ -314,4 +314,69 @@ test('seedExampleChecklist() writes a readable example list', async () => {
   assert.ok(fromDisk.items.length > 0)
   assert.ok(fromDisk.items.some((i) => i.type === 'section'))
   assert.ok(fromDisk.items.every((i) => i.type !== 'item' || i.checked === false))
+})
+
+test('normalizeInputPath() requires a value type — a path with no value field is dropped', () => {
+  assert.equal(normalizeInputPath('propulsion.mainEngine.revolutions', null), null)
+  assert.equal(normalizeInputPath('propulsion.mainEngine.revolutions', 'number'), 'propulsion.mainEngine.revolutions')
+  assert.equal(normalizeInputPath('some.path', 'text'), 'some.path')
+})
+
+test('normalizeInputPath() rejects malformed paths and non-strings', () => {
+  assert.equal(normalizeInputPath('', 'number'), null)
+  assert.equal(normalizeInputPath('has spaces', 'number'), null)
+  assert.equal(normalizeInputPath(42, 'number'), null)
+  assert.equal(normalizeInputPath(undefined, 'text'), null)
+})
+
+test('saveStructure() carries a normalized inputPath through, tied to the value type', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Engine Checks' })
+  const updated = await store.saveStructure(list.id, {
+    name: 'Engine Checks',
+    items: [
+      { type: 'item', label: 'RPM', valueType: 'number', inputPath: 'propulsion.mainEngine.revolutions' },
+      { type: 'item', label: 'No value type', inputPath: 'some.path' }
+    ]
+  })
+  assert.equal(updated.items[0].inputPath, 'propulsion.mainEngine.revolutions')
+  assert.equal(updated.items[1].inputPath, null) // dropped: no value field to feed
+})
+
+test('setItemChecked() records a value snapshot when one is passed alongside checked', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Engine Checks' })
+  const withItem = await store.saveStructure(list.id, {
+    name: 'Engine Checks',
+    items: [{ type: 'item', label: 'RPM', valueType: 'number', inputPath: 'propulsion.mainEngine.revolutions' }]
+  })
+  const itemId = withItem.items[0].id
+  const checked = await store.setItemChecked(list.id, itemId, true, 1250)
+  assert.equal(checked.items[0].checked, true)
+  assert.equal(checked.items[0].value, 1250)
+})
+
+test('setItemChecked() without a value argument leaves the existing value untouched', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Engine Checks' })
+  const withItem = await store.saveStructure(list.id, {
+    name: 'Engine Checks',
+    items: [{ type: 'item', label: 'RPM', valueType: 'number', value: 900 }]
+  })
+  const itemId = withItem.items[0].id
+  const checked = await store.setItemChecked(list.id, itemId, true)
+  assert.equal(checked.items[0].value, 900)
+})
+
+test('setItemChecked() ignores a value for an item with no value field', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Plain' })
+  const withItem = await store.saveStructure(list.id, { name: 'Plain', items: [{ type: 'item', label: 'Just a checkbox' }] })
+  const itemId = withItem.items[0].id
+  const checked = await store.setItemChecked(list.id, itemId, true, 42)
+  assert.equal(checked.items[0].value, null)
 })

@@ -131,7 +131,8 @@ module.exports = function (app) {
       if (!before) return res.status(404).json({ error: 'not found' })
       const wasComplete = isComplete(before)
       const checked = Boolean(req.body && req.body.checked)
-      const list = await store.setItemChecked(req.params.id, req.params.itemId, checked)
+      const value = req.body ? req.body.value : undefined
+      const list = await store.setItemChecked(req.params.id, req.params.itemId, checked, value)
       await maybeArchive(wasComplete, list)
       broadcast(list)
       res.json(list)

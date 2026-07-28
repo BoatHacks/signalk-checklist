@@ -91,7 +91,7 @@ function isListComplete (list) {
 }
 
 function newDraftItem (type) {
-  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null, action: null }
+  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null, action: null, inputPath: null }
 }
 
 /** Best-effort parse for the delta-action value field: keep JSON typing
@@ -122,11 +122,31 @@ function prepareItemsForSave (items) {
 // The webapp subscribes to SignalK's own delta/WebSocket stream (no separate
 // WebSocket server). The plugin always publishes full list state under
 // `checklists.<id>.state` regardless of the optional "publish summary"
-// setting, and that's the path this app listens to.
-function useSignalKSync (onListState) {
+// setting, and that's the path this app listens to. It can also be told to
+// subscribe to arbitrary extra SignalK paths (subscribeToPaths) — used for
+// an item's optional live-input path, feeding onPathValue whenever a new
+// reading arrives.
+function useSignalKSync (onListState, onPathValue) {
   const [connected, setConnected] = useState(false)
   const onListStateRef = useRef(onListState)
+  const onPathValueRef = useRef(onPathValue)
   onListStateRef.current = onListState
+  onPathValueRef.current = onPathValue
+  const wsRef = useRef(null)
+  const subscribedPathsRef = useRef(new Set())
+
+  const subscribeToPaths = useCallback((paths) => {
+    const fresh = paths.filter((p) => p && !subscribedPathsRef.current.has(p))
+    if (fresh.length === 0) return
+    fresh.forEach((p) => subscribedPathsRef.current.add(p))
+    const ws = wsRef.current
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        context: 'vessels.self',
+        subscribe: fresh.map((path) => ({ path, policy: 'instant' }))
+      }))
+    }
+  }, [])
 
   useEffect(() => {
     let ws
@@ -138,12 +158,14 @@ function useSignalKSync (onListState) {
       const token = getStoredToken()
       const tokenParam = token ? `&token=${encodeURIComponent(token)}` : ''
       ws = new WebSocket(`${proto}://${location.host}/signalk/v1/stream?subscribe=none${tokenParam}`)
+      wsRef.current = ws
 
       ws.addEventListener('open', () => {
         setConnected(true)
+        const paths = ['checklists.*', ...subscribedPathsRef.current]
         ws.send(JSON.stringify({
           context: 'vessels.self',
-          subscribe: [{ path: 'checklists.*', policy: 'instant' }]
+          subscribe: paths.map((path) => ({ path, policy: 'instant' }))
         }))
       })
 
@@ -158,7 +180,11 @@ function useSignalKSync (onListState) {
         for (const update of msg.updates) {
           for (const v of update.values || []) {
             const match = /^checklists\.([^.]+)\.state$/.exec(v.path)
-            if (match) onListStateRef.current(v.value)
+            if (match) {
+              onListStateRef.current(v.value)
+            } else if (subscribedPathsRef.current.has(v.path)) {
+              onPathValueRef.current(v.path, v.value)
+            }
           }
         }
       })
@@ -181,7 +207,7 @@ function useSignalKSync (onListState) {
     }
   }, [])
 
-  return connected
+  return { connected, subscribeToPaths }
 }
 
 function SyncIndicator ({ connected }) {
@@ -326,21 +352,59 @@ function Overview ({ lists, connected, onOpen, onEdit, onCreate, banner }) {
   `
 }
 
-// A per-item value/note field in run mode. Keeps its own local text state so
-// typing feels instant, and debounces the actual save — but adopts an
-// incoming value from live sync (another device editing the same item)
-// unless it's just the echo of what we ourselves just sent.
-function ValueInput ({ item, onCommit }) {
+// A per-item value/note field in run mode. Two modes:
+//
+// - No inputPath (the original behavior): a manually-editable field. Keeps
+//   its own local text state so typing feels instant, and debounces the
+//   actual save — but adopts an incoming value from live sync (another
+//   device editing the same item) unless it's just the echo of what we
+//   ourselves just sent.
+// - inputPath configured: read-only, continuously mirroring the live
+//   SignalK reading (liveValue, fed by the WS subscription) while the item
+//   isn't checked yet. Freezes the moment it's checked — from then on it
+//   shows whatever was recorded at check-time (item.value), not further
+//   live changes, since that's the whole point of "note the current value
+//   for the record" rather than "keep showing a live sensor forever".
+function ValueInput ({ item, liveValue, onCommit }) {
+  const hasLiveSource = Boolean(item.inputPath)
   const [value, setValue] = useState(item.value == null ? '' : String(item.value))
   const lastSentRef = useRef(item.value)
   const timerRef = useRef(null)
 
   useEffect(() => {
+    if (hasLiveSource) return
     if (item.value !== lastSentRef.current) {
       setValue(item.value == null ? '' : String(item.value))
       lastSentRef.current = item.value
     }
-  }, [item.value])
+  }, [item.value, hasLiveSource])
+
+  useEffect(() => {
+    if (!hasLiveSource || item.checked) return
+    if (liveValue !== undefined && liveValue !== null) {
+      setValue(String(liveValue))
+    }
+  }, [hasLiveSource, item.checked, liveValue])
+
+  useEffect(() => {
+    if (hasLiveSource && item.checked) {
+      setValue(item.value == null ? '' : String(item.value))
+    }
+  }, [hasLiveSource, item.checked, item.value])
+
+  if (hasLiveSource) {
+    return html`
+      <input
+        class=${`value-input ${item.valueType} live`}
+        type="text"
+        readonly
+        title=${`Live from ${item.inputPath}`}
+        placeholder="waiting…"
+        value=${value}
+        onClick=${(e) => e.stopPropagation()}
+      />
+    `
+  }
 
   const commit = (v) => {
     lastSentRef.current = item.valueType === 'number' ? (v === '' ? null : Number(v)) : v
@@ -406,7 +470,7 @@ function TriggerButton ({ onTrigger }) {
   `
 }
 
-function Runner ({ list, connected, onToggle, onSetValue, onTrigger, onReset, onEdit, onHistory, onExportMarkdown, onBack }) {
+function Runner ({ list, connected, pathValues, onToggle, onSetValue, onTrigger, onReset, onEdit, onHistory, onExportMarkdown, onBack }) {
   const { checked, total } = progressOf(list)
   return html`
     <header class="bar">
@@ -424,7 +488,7 @@ function Runner ({ list, connected, onToggle, onSetValue, onTrigger, onReset, on
               <span class="checkbox">${item.checked ? '✓' : ''}</span>
               <span class="label">${item.label}</span>
             </div>
-            ${item.valueType && html`<${ValueInput} item=${item} onCommit=${(v) => onSetValue(item.id, v)} />`}
+            ${item.valueType && html`<${ValueInput} item=${item} liveValue=${item.inputPath ? pathValues[item.inputPath] : undefined} onCommit=${(v) => onSetValue(item.id, v)} />`}
             ${item.action && html`<${TriggerButton} onTrigger=${() => onTrigger(item.id)} />`}
           </div>
         `)}
@@ -487,6 +551,11 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     next[idx] = { ...next[idx], valueType: valueType || null, value: null }
     setItems(next)
   }
+  const updateInputPath = (idx, inputPath) => {
+    const next = items.slice()
+    next[idx] = { ...next[idx], inputPath }
+    setItems(next)
+  }
   const setActionType = (idx, type) => {
     const next = items.slice()
     if (!type) {
@@ -542,6 +611,12 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
           <button class="ghost small" onClick=${() => move(idx, 1)} disabled=${idx === items.length - 1}>↓</button>
           <button class="danger small" onClick=${() => removeAt(idx)}>✕</button>
         </div>
+        ${item.type === 'item' && item.valueType && html`
+          <div class="action-config">
+            <input type="text" class="action-input" placeholder="SignalK path for live input (optional), e.g. propulsion.mainEngine.revolutions"
+              value=${item.inputPath || ''} onInput=${(e) => updateInputPath(idx, e.target.value)} />
+          </div>
+        `}
         ${item.type === 'item' && html`
           <div class="action-config">
             <select class="value-type-select" value=${item.action ? item.action.type : ''}
@@ -600,6 +675,7 @@ function App () {
   const [theme, setTheme] = useState(getPreferredTheme())
   const [themeConfig, setThemeConfig] = useState({ autoTheme: false, recommendation: null })
   const [authRequired, setAuthRequired] = useState(false)
+  const [pathValues, setPathValues] = useState({})
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
@@ -664,13 +740,31 @@ function App () {
 
   useEffect(() => { refreshSummaries() }, [refreshSummaries])
 
-  const connected = useSignalKSync((updatedList) => {
-    // Keep overview counts live for every list, and the open list live too.
-    setLists((prev) => prev.map((l) => (l.id === updatedList.id
-      ? { ...l, ...summaryFrom(updatedList) }
-      : l)))
-    setCurrent((prevCurrent) => (prevCurrent && prevCurrent.id === updatedList.id ? updatedList : prevCurrent))
-  })
+  const { connected, subscribeToPaths } = useSignalKSync(
+    (updatedList) => {
+      // Keep overview counts live for every list, and the open list live too.
+      setLists((prev) => prev.map((l) => (l.id === updatedList.id
+        ? { ...l, ...summaryFrom(updatedList) }
+        : l)))
+      setCurrent((prevCurrent) => (prevCurrent && prevCurrent.id === updatedList.id ? updatedList : prevCurrent))
+    },
+    (path, value) => {
+      setPathValues((prev) => (prev[path] === value ? prev : { ...prev, [path]: value }))
+    }
+  )
+
+  // Whenever a list is open in run mode, subscribe to every live-input path
+  // its items declare, so ValueInput has something to mirror. Keyed on list
+  // identity + view rather than the items array itself, since items change
+  // reference on every check/value update but the set of input paths for a
+  // given list structure practically never does.
+  useEffect(() => {
+    if (view !== 'run' || !current) return
+    const paths = current.items
+      .filter((i) => i.type === 'item' && i.inputPath)
+      .map((i) => i.inputPath)
+    if (paths.length > 0) subscribeToPaths(paths)
+  }, [current && current.id, view])
 
   function summaryFrom (list) {
     const { checked, total } = progressOf(list)
@@ -717,12 +811,20 @@ function App () {
 
   const toggleItem = async (itemId, checked) => {
     const wasComplete = isListComplete(current)
+    const item = current.items.find((i) => i.id === itemId)
+    const body = { checked }
+    // Note the current live-subscribed reading once, at the moment of
+    // checking — not continuously — so it becomes the recorded value for
+    // this run (and later shows up in export/history).
+    if (checked && item && item.inputPath && pathValues[item.inputPath] != null) {
+      body.value = pathValues[item.inputPath]
+    }
     setCurrent((c) => ({
       ...c,
-      items: c.items.map((i) => (i.id === itemId ? { ...i, checked } : i))
+      items: c.items.map((i) => (i.id === itemId ? { ...i, checked, ...(body.value !== undefined ? { value: body.value } : {}) } : i))
     }))
     try {
-      const updated = await apiCall('POST', `/lists/${current.id}/items/${itemId}/check`, { checked })
+      const updated = await apiCall('POST', `/lists/${current.id}/items/${itemId}/check`, body)
       setCurrent(updated)
       announceIfJustCompleted(wasComplete, updated)
     } catch (err) {
@@ -828,7 +930,7 @@ function App () {
 
   let content
   if (view === 'run' && current) {
-    content = html`<${Runner} list=${current} connected=${connected}
+    content = html`<${Runner} list=${current} connected=${connected} pathValues=${pathValues}
       onToggle=${toggleItem} onSetValue=${setItemValue} onTrigger=${triggerItem} onReset=${resetList}
       onEdit=${() => setView('edit')} onHistory=${openHistory}
       onExportMarkdown=${exportListMarkdown} onBack=${backToOverview} />`

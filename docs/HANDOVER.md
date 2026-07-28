@@ -70,6 +70,7 @@ Item {
   valueType: 'text' | 'number' | null   // chosen per item, in edit mode
   value: string | number | null          // run-state, like `checked`
   action: null | RestAction | DeltaAction  // optional trigger button, structure-level
+  inputPath: string | null               // optional SignalK path feeding value live, structure-level
 }
 
 RestAction {
@@ -140,6 +141,17 @@ re-derivable from the code):
   state/value — clicking it never checks the item off. `lib/actions.js`
   takes an injectable `fetchImpl` specifically so this is unit-testable
   without a real network call.
+- **Live-input value fields snapshot once, at check-time — they don't
+  continuously write to the server.** An item with `inputPath` set has
+  its value field mirror the subscribed SignalK path purely client-side
+  (read-only, via the same WS connection used for list-state live sync)
+  while unchecked; only the moment it's actually checked does the
+  webapp bundle the last-seen reading into the same `POST .../check`
+  request (`{ checked, value }`), and `ChecklistStore.setItemChecked`
+  records both atomically in one write. This deliberately avoids
+  spamming a `POST .../value` + delta-broadcast on every live tick (which
+  could be many times a second for something like RPM) — the field is a
+  live *display*, the check-off is the *record* event.
 - **Two distinct authentication concerns, solved two different ways.**
   (1) The webapp *as a client of this plugin's own API* — handled by a
   browser-side sign-in screen against SignalK's standard
@@ -165,7 +177,7 @@ GET    /lists/:id
 PUT    /lists/:id                          { name, items, retentionDays }
 DELETE /lists/:id
 POST   /lists/:id/reset
-POST   /lists/:id/items/:itemId/check      { checked }
+POST   /lists/:id/items/:itemId/check      { checked, value? }  (value only recorded for live-input items, see below)
 POST   /lists/:id/items/:itemId/value      { value }
 POST   /lists/:id/items/:itemId/trigger    (fires the item's configured action, if any)
 GET    /lists/:id/export                   (JSON download)
@@ -272,6 +284,20 @@ before touching `index.js` or `public/app.js`.
    not the `requestId` you might reach for first), and `:status` must be
    lowercase (`approved`, not `APPROVED`) — the handler does a literal
    `status === 'approved'` string check.
+
+10. **A WebSocket client can't inject test data into SignalK — you need a
+    real data source.** To verify the live-input-path feature (an item's
+    value field mirroring `vessels.self.<path>`), a `ws` client connected
+    to `/signalk/v1/stream` can *subscribe* and watch values arrive, but
+    has no way to *publish* one — the stream is one-directional for
+    plain WS clients. Only something that calls `app.handleMessage()` can
+    put a value onto the bus, which means an actual (even throwaway)
+    plugin. See the git history around this feature's commit for a
+    ~15-line `test-source-plugin` that publishes a fake
+    `propulsion.mainEngine.revolutions` on an interval — symlink it into
+    a scratch `sk-home`'s `node_modules`, enable it in
+    `plugin-config-data`, and it's a real source the checklist plugin
+    (and its webapp) can subscribe to like any other.
 
 ## Local development & testing setup
 
