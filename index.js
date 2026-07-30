@@ -117,6 +117,7 @@ module.exports = function (app) {
 
     router.delete('/lists/:id', asyncHandler(async (req, res) => {
       await store.remove(req.params.id)
+      await runHistory.removeAllRuns(req.params.id)
       res.status(204).end()
     }))
 
