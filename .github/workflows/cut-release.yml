@@ -1,0 +1,60 @@
+name: Cut Release
+
+# Manually-triggered release cutter. Exists because the assistant's own git
+# push / GitHub API credentials can't create new tag refs or releases on
+# this repo (403, permission scoping on that integration) — this workflow
+# runs with the repo's own GITHUB_TOKEN (contents: write), which can.
+#
+# Usage: dispatch with the version already bumped and committed to main
+# (package.json's version must match the "version" input), then this
+# workflow tags that commit and cuts the GitHub release from the matching
+# CHANGELOG.md section.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, e.g. 0.3.1 (no leading v)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify package.json version matches input
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$PKG_VERSION" != "${{ inputs.version }}" ]; then
+            echo "package.json version ($PKG_VERSION) does not match requested version (${{ inputs.version }})"
+            exit 1
+          fi
+
+      - name: Extract CHANGELOG section for this version
+        run: |
+          awk '/^## \[${{ inputs.version }}\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG.md section found for [${{ inputs.version }}]"
+            exit 1
+          fi
+
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes-file release-notes.md
