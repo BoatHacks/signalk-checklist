@@ -3,7 +3,7 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.3.1] - 2026-07-31
 
 ### Added
 
@@ -16,6 +16,13 @@ follows [Keep a Changelog](https://keepachangelog.com/).
   fixed record for that run, available in export/history the same way a
   manually-entered value always was. Unchecking preserves the last
   recorded value; a manual list Reset clears it, same as any other value.
+
+### Fixed
+
+- Deleting a checklist now also deletes its archived run history. Previously
+  the run history was left on disk, so a new list created with the same slug
+  (e.g. the same name) as a deleted one would silently inherit the deleted
+  list's completed-run history.
 
 ## [0.3.0] - 2026-07-27
 
