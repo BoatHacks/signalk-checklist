@@ -1,3 +1,5 @@
+@no-slop.md
+
 # signalk-checklist
 
 SignalK webapp plugin for generic, user-defined checklists (not limited to one
