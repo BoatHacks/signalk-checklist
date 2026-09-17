@@ -27,6 +27,46 @@ test('create() dedupes ids for lists with the same name', async () => {
   assert.notEqual(a.id, b.id)
 })
 
+test('duplicate() copies structure under a new id, named "(copy)", with run-state reset', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const saved = await store.saveStructure(list.id, {
+    name: 'Departure',
+    items: [
+      { type: 'section', label: 'Checks' },
+      { type: 'item', label: 'Check oil', checked: true }
+    ]
+  })
+
+  const copy = await store.duplicate(saved.id)
+
+  assert.notEqual(copy.id, saved.id)
+  assert.equal(copy.name, 'Departure (copy)')
+  assert.equal(copy.items.length, 2)
+  assert.equal(copy.items[1].label, 'Check oil')
+  assert.equal(copy.items[1].checked, false)
+  // Item ids are freshly minted, not shared with the original.
+  assert.notDeepEqual(copy.items.map((i) => i.id), saved.items.map((i) => i.id))
+  // The original is untouched.
+  assert.equal((await store.get(saved.id)).items[1].checked, true)
+})
+
+test('duplicate() dedupes ids/names when duplicated more than once', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const a = await store.duplicate(list.id)
+  const b = await store.duplicate(list.id)
+  assert.notEqual(a.id, b.id)
+})
+
+test('duplicate() rejects a missing list id', async () => {
+  const store = tempStore()
+  await store.init()
+  await assert.rejects(() => store.duplicate('nope'), /list not found/)
+})
+
 test('saveStructure() normalizes items and is last-write-wins', async () => {
   const store = tempStore()
   await store.init()

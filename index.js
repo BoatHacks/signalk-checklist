@@ -97,6 +97,11 @@ module.exports = function (app) {
       res.status(201).json(list)
     }))
 
+    router.post('/lists/:id/duplicate', asyncHandler(async (req, res) => {
+      const list = await store.duplicate(req.params.id)
+      res.status(201).json(list)
+    }))
+
     router.get('/lists/:id', asyncHandler(async (req, res) => {
       const list = await store.get(req.params.id)
       if (!list) return res.status(404).json({ error: 'not found' })
