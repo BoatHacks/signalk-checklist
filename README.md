@@ -3,6 +3,13 @@
 A SignalK plugin + webapp for generic, user-defined checklists (pre-departure,
 maintenance, docking procedures, or anything else you define yourself).
 
+<p>
+  <img src="docs/screenshots/checklist-light.png" width="320" alt="Checklist mode, light theme" />
+  <img src="docs/screenshots/checklist-dark.png" width="320" alt="Checklist mode, dark theme" />
+  <img src="docs/screenshots/edit-light.png" width="320" alt="Edit mode, light theme" />
+  <img src="docs/screenshots/edit-dark.png" width="320" alt="Edit mode, dark theme" />
+</p>
+
 ## Features
 
 - Multiple named checklists, each with ordered items and optional section
