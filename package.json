@@ -15,12 +15,19 @@
   "license": "MIT",
   "signalk": {
     "displayName": "Checklist",
-    "appIcon": "./assets/icons/icon-512.png"
+    "appIcon": "./assets/icons/icon-512.png",
+    "screenshots": [
+      "./docs/screenshots/checklist-light.png",
+      "./docs/screenshots/checklist-dark.png",
+      "./docs/screenshots/edit-light.png",
+      "./docs/screenshots/edit-dark.png"
+    ]
   },
   "files": [
     "index.js",
     "lib/",
-    "public/"
+    "public/",
+    "docs/screenshots/"
   ],
   "engines": {
     "node": ">=18"
