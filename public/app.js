@@ -320,7 +320,7 @@ function LoginGate ({ onLoggedIn }) {
   `
 }
 
-function Overview ({ lists, connected, onOpen, onEdit, onCreate, banner }) {
+function Overview ({ lists, connected, onOpen, onEdit, onDuplicate, onCreate, banner }) {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
 
@@ -338,6 +338,7 @@ function Overview ({ lists, connected, onOpen, onEdit, onCreate, banner }) {
           <span class="progress">${list.checked} / ${list.total} checked</span>
         </div>
         <button class="ghost small" onClick=${() => onEdit(list.id)}>Edit</button>
+        <button class="ghost small" onClick=${() => onDuplicate(list.id)}>Duplicate</button>
       </div>
     `)}
     ${!creating && html`<button class="primary" onClick=${() => setCreating(true)}>+ New checklist</button>`}
@@ -875,6 +876,16 @@ function App () {
     }
   }
 
+  const duplicateList = async (id) => {
+    try {
+      const list = await apiCall('POST', `/lists/${id}/duplicate`)
+      await refreshSummaries()
+      flash('ok', `Duplicated as "${list.name}"`)
+    } catch (err) {
+      handleErr(err)
+    }
+  }
+
   const announceIfJustCompleted = (wasComplete, updated) => {
     if (!wasComplete && isListComplete(updated)) {
       flash('ok', 'Checklist complete — saved to history!')
@@ -1015,7 +1026,7 @@ function App () {
       onExport=${exportList} onImport=${importFile} onBack=${backToOverview} />`
   } else {
     content = html`<${Overview} lists=${lists} connected=${connected} banner=${banner}
-      onOpen=${openList} onEdit=${editList} onCreate=${createList} />`
+      onOpen=${openList} onEdit=${editList} onCreate=${createList} onDuplicate=${duplicateList} />`
   }
 
   return html`
