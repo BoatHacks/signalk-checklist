@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-09-21
+
+### Added
+
+- Duplicate a checklist: a "Duplicate" button next to each list's "Edit"
+  on the overview copies its structure (items, retention setting) under
+  a new id and name ("`<name>` (copy)"), with fresh item ids and every
+  item reset to unchecked/no value. The original list and its run-state
+  are untouched — a quick way to turn a checklist you've dialed in into
+  a template for another one.
+
 ## [0.3.2] - 2026-09-21
 
 ### Added
