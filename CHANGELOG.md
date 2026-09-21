@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.2] - 2026-09-21
+
+### Added
+
+- Collapse checked items in run mode: new per-list `collapseChecked`
+  setting (off by default), toggled in the create/edit dialog next to
+  retention. When on, checked items render as a dimmed single line
+  instead of the full row — still tappable to uncheck.
+- Deep-link to a specific checklist: the URL hash (`#list/<id>` for run
+  mode, `#list/<id>/edit` for edit mode) tracks whatever's open, so the
+  address bar is always a valid link back to it, and a pasted/bookmarked
+  link opens straight there. An unknown or deleted list id falls back to
+  the overview with an error banner.
+
 ## [0.3.1] - 2026-07-31
 
 ### Added
