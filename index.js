@@ -104,12 +104,14 @@ module.exports = function (app) {
     }))
 
     // Replace list structure (name/items, including each item's optional
-    // valueType, and the list's run-history retention window). Last-write-wins, no locking.
+    // valueType, the list's run-history retention window, and the
+    // collapse-checked-items display setting). Last-write-wins, no locking.
     router.put('/lists/:id', asyncHandler(async (req, res) => {
       const list = await store.saveStructure(req.params.id, {
         name: req.body && req.body.name,
         items: req.body && req.body.items,
-        retentionDays: req.body && req.body.retentionDays
+        retentionDays: req.body && req.body.retentionDays,
+        collapseChecked: req.body && req.body.collapseChecked
       })
       broadcast(list)
       res.json(list)
