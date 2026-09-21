@@ -209,6 +209,14 @@ button:disabled { opacity: 0.4; cursor: default; }
   overflow-wrap: break-word;
 }
 
+.item-row.collapsed {
+  padding: 4px 10px;
+}
+
+.item-row.collapsed .label {
+  font-size: 0.9rem;
+}
+
 .value-input {
   flex: none;
   width: 84px;

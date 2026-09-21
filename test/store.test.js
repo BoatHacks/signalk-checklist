@@ -246,6 +246,36 @@ test('saveStructure() sets retentionDays and preserves it when omitted from a la
   assert.equal(cleared.retentionDays, null)
 })
 
+test('create() defaults collapseChecked to false', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  assert.equal(list.collapseChecked, false)
+})
+
+test('saveStructure() sets collapseChecked and preserves it when omitted from a later save', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const collapsed = await store.saveStructure(list.id, { name: 'Departure', items: [], collapseChecked: true })
+  assert.equal(collapsed.collapseChecked, true)
+
+  // A later save that doesn't mention collapseChecked keeps the existing value.
+  const untouched = await store.saveStructure(list.id, { name: 'Departure', items: [] })
+  assert.equal(untouched.collapseChecked, true)
+
+  // Explicitly passing false turns it back off.
+  const uncollapsed = await store.saveStructure(list.id, { name: 'Departure', items: [], collapseChecked: false })
+  assert.equal(uncollapsed.collapseChecked, false)
+})
+
+test('importList() carries collapseChecked from the imported document', async () => {
+  const store = tempStore()
+  await store.init()
+  const imported = await store.importList({ name: 'Imported', items: [], collapseChecked: true })
+  assert.equal(imported.collapseChecked, true)
+})
+
 test('normalizeAction() accepts a well-formed rest action and defaults method to PUT', () => {
   assert.deepEqual(
     normalizeAction({ type: 'rest', url: ' http://192.168.1.50/api/relay ' }),

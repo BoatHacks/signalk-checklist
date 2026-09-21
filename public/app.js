@@ -480,9 +480,17 @@ function Runner ({ list, connected, pathValues, onToggle, onSetValue, onTrigger,
     <h1 style="margin:0 0 4px">${list.name}</h1>
     <div class="progress-pill" style="display:inline-block;margin-bottom:10px">${checked} / ${total} done</div>
     <div>
-      ${list.items.map((item) => item.type === 'section'
-        ? html`<div class="section-header" key=${item.id}>${item.label}</div>`
-        : html`
+      ${list.items.map((item) => {
+        if (item.type === 'section') return html`<div class="section-header" key=${item.id}>${item.label}</div>`
+        const collapsed = list.collapseChecked && item.checked
+        if (collapsed) {
+          return html`
+            <div class="item-row checked collapsed" key=${item.id} onClick=${() => onToggle(item.id, false)}>
+              <span class="label">${item.label}</span>
+            </div>
+          `
+        }
+        return html`
           <div class=${`item-row ${item.checked ? 'checked' : ''}`} key=${item.id}>
             <div class="item-main" onClick=${() => onToggle(item.id, !item.checked)}>
               <span class="checkbox">${item.checked ? '✓' : ''}</span>
@@ -491,7 +499,8 @@ function Runner ({ list, connected, pathValues, onToggle, onSetValue, onTrigger,
             ${item.valueType && html`<${ValueInput} item=${item} liveValue=${item.inputPath ? pathValues[item.inputPath] : undefined} onCommit=${(v) => onSetValue(item.id, v)} />`}
             ${item.action && html`<${TriggerButton} onTrigger=${() => onTrigger(item.id)} />`}
           </div>
-        `)}
+        `
+      })}
     </div>
     <div class="toolbar">
       <button onClick=${onReset}>Reset</button>
@@ -531,6 +540,7 @@ function History ({ list, runs, onExportRunMarkdown, onBack }) {
 function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner }) {
   const [name, setName] = useState(list.name)
   const [retentionDays, setRetentionDays] = useState(list.retentionDays == null ? '' : String(list.retentionDays))
+  const [collapseChecked, setCollapseChecked] = useState(Boolean(list.collapseChecked))
   const [items, setItems] = useState(list.items.map((i) => ({ ...i })))
   const fileInputRef = useRef(null)
 
@@ -593,6 +603,14 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
         onInput=${(e) => setRetentionDays(e.target.value)} />
     </div>
 
+    <div class="field">
+      <label class="checkbox-field">
+        <input type="checkbox" checked=${collapseChecked}
+          onChange=${(e) => setCollapseChecked(e.target.checked)} />
+        Collapse checked items while running this list
+      </label>
+    </div>
+
     ${items.map((item, idx) => html`
       <${Fragment} key=${item.id}>
         <div class="edit-row">
@@ -653,7 +671,7 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     </div>
 
     <div class="toolbar">
-      <button class="primary" onClick=${() => onSave({ name, items: prepareItemsForSave(items), retentionDays: retentionDays === '' ? null : Number(retentionDays) })}>Save</button>
+      <button class="primary" onClick=${() => onSave({ name, items: prepareItemsForSave(items), retentionDays: retentionDays === '' ? null : Number(retentionDays), collapseChecked })}>Save</button>
       <button class="danger" onClick=${onDelete}>Delete checklist</button>
     </div>
 
@@ -766,6 +784,55 @@ function App () {
     if (paths.length > 0) subscribeToPaths(paths)
   }, [current && current.id, view])
 
+  // --- Deep-linking (#list/<id>, #list/<id>/edit) ---------------------------
+  //
+  // Resolves a hash to a list + view on load and on any later hashchange (a
+  // pasted link, or back/forward through history entries that predate this
+  // app run — in-app navigation itself never pushes a history entry, see
+  // the mirroring effect below).
+  const openFromHash = useCallback(async (id, mode) => {
+    try {
+      const list = await apiCall('GET', `/lists/${id}`)
+      setCurrent(list)
+      setView(mode)
+    } catch (err) {
+      if (err instanceof AuthRequiredError) {
+        setAuthRequired(true)
+        return
+      }
+      // Falls back to the overview unconditionally (not just "stay put") —
+      // a bad hash can arrive while some other list is already open (e.g.
+      // the address bar edited by hand), and only Overview has anywhere to
+      // show the banner.
+      setCurrent(null)
+      setView('overview')
+      history.replaceState(null, '', location.pathname + location.search)
+      flash('error', 'Checklist not found')
+    }
+  }, [])
+
+  useEffect(() => {
+    const resolve = () => {
+      const match = /^#list\/([^/]+)(\/edit)?$/.exec(location.hash)
+      if (match) openFromHash(decodeURIComponent(match[1]), match[2] ? 'edit' : 'run')
+    }
+    resolve()
+    window.addEventListener('hashchange', resolve)
+    return () => window.removeEventListener('hashchange', resolve)
+  }, [openFromHash])
+
+  // Mirrors the current view back onto the URL hash, so it's always a valid
+  // link to what's on screen. Uses replaceState rather than a hash
+  // assignment or pushState, so this never adds a browser-history entry or
+  // fires the hashchange listener above.
+  useEffect(() => {
+    if (view === 'run' && current) {
+      history.replaceState(null, '', `#list/${encodeURIComponent(current.id)}`)
+    } else if (view === 'edit' && current) {
+      history.replaceState(null, '', `#list/${encodeURIComponent(current.id)}/edit`)
+    }
+  }, [view, current && current.id])
+
   function summaryFrom (list) {
     const { checked, total } = progressOf(list)
     return { name: list.name, checked, total, updatedAt: list.updatedAt }
@@ -789,7 +856,12 @@ function App () {
     }
   }
 
-  const backToOverview = () => { setCurrent(null); setView('overview'); refreshSummaries() }
+  const backToOverview = () => {
+    setCurrent(null)
+    setView('overview')
+    history.replaceState(null, '', location.pathname + location.search)
+    refreshSummaries()
+  }
 
   const createList = async (name) => {
     if (!name || !name.trim()) return
@@ -870,9 +942,9 @@ function App () {
     }
   }
 
-  const saveStructure = async ({ name, items, retentionDays }) => {
+  const saveStructure = async ({ name, items, retentionDays, collapseChecked }) => {
     try {
-      await apiCall('PUT', `/lists/${current.id}`, { name, items, retentionDays })
+      await apiCall('PUT', `/lists/${current.id}`, { name, items, retentionDays, collapseChecked })
       flash('ok', 'Saved')
       backToOverview()
     } catch (err) {
