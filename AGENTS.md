@@ -39,3 +39,18 @@ use case like pre-departure). Repo: BoatHacks/signalk-checklist.
   via a manual export button.
 - Append-only history of completed runs per list (record-keeping over time,
   not overwriting the current run).
+- Duplicate a checklist — copies structure (items, retention) under a new
+  id/name, fresh item ids, run-state reset (unchecked, no values). Original
+  list untouched.
+- Collapsed checked items — per-list setting `collapseChecked` (default off),
+  set in the create/edit dialog next to retention, not a runtime toggle. When
+  on, checked items in run mode render as a dimmed single line (no checkbox
+  glyph) instead of the full row — still tappable to uncheck. Section headers
+  and the progress pill are unaffected.
+- Deep-link to a list — URL hash `#list/<id>` (run mode) / `#list/<id>/edit`
+  (edit mode), kept in sync with the current view via `history.replaceState`
+  (no new browser-history entries per in-app navigation), parsed on load and
+  on `hashchange` (covers pasted links and back/forward through entries that
+  predate the app). A hash naming a missing/deleted list falls back to the
+  overview with an error banner ("Checklist not found") and the hash is
+  cleared.
