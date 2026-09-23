@@ -19,6 +19,7 @@ on:
 
 permissions:
   contents: write
+  actions: write # trigger publish.yml
 
 jobs:
   release:
@@ -58,3 +59,13 @@ jobs:
           gh release create "v${{ inputs.version }}" \
             --title "v${{ inputs.version }}" \
             --notes-file release-notes.md
+
+      - name: Trigger publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release just created above won't itself trigger
+          # publish.yml's `release: types: [published]` -- GitHub
+          # doesn't let GITHUB_TOKEN-authored events fire other
+          # workflows (loop prevention). Ask for it explicitly instead.
+          gh workflow run publish.yml --ref main

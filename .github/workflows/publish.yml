@@ -1,0 +1,28 @@
+name: publish
+
+on:
+  release:
+    types: [published]
+  # cut-release.yml creates the release itself using the default
+  # GITHUB_TOKEN, and GitHub explicitly does not let GITHUB_TOKEN-authored
+  # events trigger other workflows (loop prevention) -- so the `release`
+  # trigger above never actually fires from that. cut-release.yml
+  # explicitly `gh workflow run`s this instead; workflow_dispatch is
+  # what makes that possible.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: npm test
+      - run: npm publish
