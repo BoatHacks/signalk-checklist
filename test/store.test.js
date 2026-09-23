@@ -203,6 +203,23 @@ test('saveStructure() normalizes valueType and coerces value to match it', async
   assert.equal(updated.items[2].value, null)
 })
 
+test('saveStructure() trims item notes and defaults to empty string; sections never get any', async () => {
+  const store = tempStore()
+  await store.init()
+  const list = await store.create({ name: 'Departure' })
+  const updated = await store.saveStructure(list.id, {
+    name: 'Departure',
+    items: [
+      { type: 'section', label: 'Pre-start', notes: 'ignored on sections' },
+      { type: 'item', label: 'Start engine', notes: '  Turn the key, wait for glow plugs.  ' },
+      { type: 'item', label: 'No notes' }
+    ]
+  })
+  assert.equal(updated.items[0].notes, undefined)
+  assert.equal(updated.items[1].notes, 'Turn the key, wait for glow plugs.')
+  assert.equal(updated.items[2].notes, '')
+})
+
 test('setItemValue() updates a value field and rejects items without one', async () => {
   const store = tempStore()
   await store.init()

@@ -166,12 +166,45 @@ button:disabled { opacity: 0.4; cursor: default; }
   letter-spacing: 0.06em;
 }
 
+.item-wrap {
+  border-bottom: 1px solid var(--border);
+}
+
 .item-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px 10px;
-  border-bottom: 1px solid var(--border);
+}
+
+.item-notes {
+  padding: 0 10px 12px 48px;
+}
+
+.item-notes summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.85rem;
+  list-style: none;
+}
+
+.item-notes summary::-webkit-details-marker {
+  display: none;
+}
+
+.item-notes summary::before {
+  content: "▸ ";
+}
+
+.item-notes[open] summary::before {
+  content: "▾ ";
+}
+
+.notes-body {
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 0.92rem;
+  white-space: pre-wrap;
 }
 
 .item-row .item-main {
@@ -269,6 +302,20 @@ button:disabled { opacity: 0.4; cursor: default; }
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 0.9rem;
+}
+
+.notes-input {
+  flex: 1;
+  min-width: 200px;
+  min-height: 60px;
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  resize: vertical;
 }
 
 .toolbar {

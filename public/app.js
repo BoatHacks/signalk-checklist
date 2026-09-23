@@ -91,7 +91,7 @@ function isListComplete (list) {
 }
 
 function newDraftItem (type) {
-  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null, action: null, inputPath: null }
+  return { id: `_new_${Math.random().toString(36).slice(2, 10)}`, type, label: '', checked: false, valueType: null, value: null, action: null, inputPath: null, notes: '' }
 }
 
 /** Best-effort parse for the delta-action value field: keep JSON typing
@@ -486,19 +486,29 @@ function Runner ({ list, connected, pathValues, onToggle, onSetValue, onTrigger,
         const collapsed = list.collapseChecked && item.checked
         if (collapsed) {
           return html`
-            <div class="item-row checked collapsed" key=${item.id} onClick=${() => onToggle(item.id, false)}>
-              <span class="label">${item.label}</span>
+            <div class="item-wrap" key=${item.id}>
+              <div class="item-row checked collapsed" onClick=${() => onToggle(item.id, false)}>
+                <span class="label">${item.label}</span>
+              </div>
             </div>
           `
         }
         return html`
-          <div class=${`item-row ${item.checked ? 'checked' : ''}`} key=${item.id}>
-            <div class="item-main" onClick=${() => onToggle(item.id, !item.checked)}>
-              <span class="checkbox">${item.checked ? '✓' : ''}</span>
-              <span class="label">${item.label}</span>
+          <div class="item-wrap" key=${item.id}>
+            <div class=${`item-row ${item.checked ? 'checked' : ''}`}>
+              <div class="item-main" onClick=${() => onToggle(item.id, !item.checked)}>
+                <span class="checkbox">${item.checked ? '✓' : ''}</span>
+                <span class="label">${item.label}</span>
+              </div>
+              ${item.valueType && html`<${ValueInput} item=${item} liveValue=${item.inputPath ? pathValues[item.inputPath] : undefined} onCommit=${(v) => onSetValue(item.id, v)} />`}
+              ${item.action && html`<${TriggerButton} onTrigger=${() => onTrigger(item.id)} />`}
             </div>
-            ${item.valueType && html`<${ValueInput} item=${item} liveValue=${item.inputPath ? pathValues[item.inputPath] : undefined} onCommit=${(v) => onSetValue(item.id, v)} />`}
-            ${item.action && html`<${TriggerButton} onTrigger=${() => onTrigger(item.id)} />`}
+            ${item.notes && html`
+              <details class="item-notes" onClick=${(e) => e.stopPropagation()}>
+                <summary>Notes</summary>
+                <div class="notes-body">${item.notes}</div>
+              </details>
+            `}
           </div>
         `
       })}
@@ -567,6 +577,11 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
     next[idx] = { ...next[idx], inputPath }
     setItems(next)
   }
+  const updateNotes = (idx, notes) => {
+    const next = items.slice()
+    next[idx] = { ...next[idx], notes }
+    setItems(next)
+  }
   const setActionType = (idx, type) => {
     const next = items.slice()
     if (!type) {
@@ -630,6 +645,12 @@ function Editor ({ list, onSave, onDelete, onExport, onImport, onBack, banner })
           <button class="ghost small" onClick=${() => move(idx, 1)} disabled=${idx === items.length - 1}>↓</button>
           <button class="danger small" onClick=${() => removeAt(idx)}>✕</button>
         </div>
+        ${item.type === 'item' && html`
+          <div class="action-config">
+            <textarea class="notes-input" placeholder="Notes (optional) — longer instructions for this step, shown as an expandable “Notes” while running the list"
+              value=${item.notes || ''} onInput=${(e) => updateNotes(idx, e.target.value)}></textarea>
+          </div>
+        `}
         ${item.type === 'item' && item.valueType && html`
           <div class="action-config">
             <input type="text" class="action-input" placeholder="SignalK path for live input (optional), e.g. propulsion.mainEngine.revolutions"

@@ -33,8 +33,13 @@ use case like pre-departure). Repo: BoatHacks/signalk-checklist.
   has upload/download for lists.
 
 ## v2 (in progress)
-- Per-item notes/values — type (free text or numeric) chosen per item at edit
-  time, not globally for the whole list.
+- Per-item run-time values — type (free text or numeric) chosen per item at
+  edit time, not globally for the whole list. Recorded when the item is
+  checked (or edited manually), shown in export/history.
+- Per-item notes — separate from the above: a longer, author-written
+  free-text field (set in edit mode) shown as a collapsed "Notes" disclosure
+  while running the list, for instructions a first-timer needs but a seasoned
+  crew member can skip past.
 - Export/archive a completed list to Markdown, both automatically at 100% and
   via a manual export button.
 - Append-only history of completed runs per list (record-keeping over time,
