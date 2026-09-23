@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.0] - 2026-09-23
+
+### Added
+
+- Optional per-item notes: longer, author-written free-text instructions set
+  per item in edit mode, shown as a collapsed "Notes" disclosure while
+  running the list. Meant for information a first-timer needs (e.g. where
+  the fuel shutoff is, how to start the engine) that a seasoned crew member
+  can skip past without it cluttering the view. Separate from the existing
+  per-item value field, which records a runtime reading rather than static
+  instructions.
+
 ## [0.4.0] - 2026-09-21
 
 ### Added
